@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variety Market — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  input[type=range]{width:100%;accent-color:#7c6df2;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 6</span>Variety Market</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Price your variety as the market integrates</h2>
+    <p class="sub">You run <b>one firm among many</b> in a monopolistically competitive industry — every firm sells its own variety of the same good. Your only lever is your <b>price</b>. Demand for your variety: a share of the market, minus lost customers if you price above the crowd, plus stolen customers if you undercut. You pay a fixed cost of <b>800</b> per year and <b>10</b> per unit.</p>
+    <p class="sub">Across 4 years, trade integration triples the market — but floods it with foreign rivals. Watch what integration does to markups, scale, and survival. Your score compares your cumulative profit with the best achievable pricing.</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Open for business</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <h2 id="rTitle"></h2>
+    <p class="sub" id="rDesc"></p>
+    <div class="stats">
+      <div class="stat"><b id="sN">–</b><span>firms in market</span></div>
+      <div class="stat"><b id="sS">–</b><span>market size</span></div>
+      <div class="stat"><b id="sPbar">–</b><span>rivals' price</span></div>
+      <div class="stat"><b id="sProfit">0</b><span>cumulative profit</span></div>
+    </div>
+    <h3>Set your price</h3>
+    <input type="range" id="price" min="11" max="60" value="30" step="0.5">
+    <div class="stats">
+      <div class="stat"><b id="pNow">–</b><span>your price</span></div>
+      <div class="stat"><b id="qNow">–</b><span>units you'd sell</span></div>
+      <div class="stat"><b id="piNow">–</b><span>profit this year</span></div>
+    </div>
+    <button class="btn" id="lockBtn">Lock in price</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next year</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Market closed</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'scale-economies';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   Your demand: Q = S*(1/n − b*(P − P̄)), b = 0.005; cost = 800 + 10Q.
+   Rivals price at the symmetric equilibrium P̄ = c + 1/(b·n), which is also
+   your profit-maximizing price when everyone else is there — so the expert
+   benchmark per year is the equilibrium profit, and undercutting/overpricing
+   both cost you money. Markup 1/(b·n) shrinks as integration raises n.       */
+var b=0.005, c=10, F=800;
+var YEARS = [
+  { n:6,  S:1000, t:'Year 1 — Home market only', d:'Six domestic firms share a market of 1,000 customers. Comfortable margins... for now.' },
+  { n:16, S:3000, t:'Year 2 — Borders open', d:'Free trade! The market triples to 3,000 customers — but ten foreign varieties enter. More competitors means every firm’s markup shrinks.' },
+  { n:12, S:3000, t:'Year 3 — The shakeout', d:'Four money-losing firms exited. Survivors sell more units each — scale economies at work.' },
+  { n:10, S:3000, t:'Year 4 — Mature integrated market', d:'The market settles at ten firms: fewer than the two markets had separately, each bigger and cheaper. Consumers get MORE variety than either country alone had, at LOWER prices.' }
+];
+function pbar(y){ return c + 1/(b*y.n); }
+function qty(y,P){ return Math.max(0, y.S*(1/y.n - b*(P - pbar(y)))); }
+function profit(y,P){ return (P-c)*qty(y,P) - F; }
+var G={ y:0, total:0, expert:0, hist:[] };
+
+$('startBtn').addEventListener('click', function(){
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  year();
+});
+function year(){
+  var y=YEARS[G.y];
+  $('rTitle').textContent=y.t; $('rDesc').textContent=y.d;
+  $('sN').textContent=y.n; $('sS').textContent=y.S.toLocaleString();
+  $('sPbar').textContent=pbar(y).toFixed(1);
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden'); $('lockBtn').classList.remove('hidden');
+  $('price').value=Math.min(60,Math.max(11,Math.round(pbar(y))));
+  refresh();
+}
+function refresh(){
+  var y=YEARS[G.y], P=Number($('price').value);
+  $('pNow').textContent=P.toFixed(1);
+  $('qNow').textContent=qty(y,P).toFixed(0);
+  var pi=profit(y,P);
+  $('piNow').innerHTML='<span class="'+(pi>=0?'good':'bad')+'">'+pi.toFixed(0)+'</span>';
+}
+$('price').addEventListener('input',refresh);
+$('lockBtn').addEventListener('click',function(){
+  var y=YEARS[G.y], P=Number($('price').value);
+  var pi=profit(y,P), eq=pbar(y), piEq=profit(y,eq);
+  G.total+=pi; G.expert+=piEq;
+  G.hist.push({ y:G.y+1, P:P, eq:eq, pi:pi, piEq:piEq });
+  var fb='<b>Year '+(G.y+1)+':</b> you priced at '+P.toFixed(1)+', sold '+qty(y,P).toFixed(0)+' units, profit <b class="'+(pi>=0?'good':'bad')+'">'+pi.toFixed(0)+'</b>. ';
+  fb+='The profit-maximizing price was <b>'+eq.toFixed(1)+'</b> (cost 10 + markup 1/(b·n) = '+(1/(b*y.n)).toFixed(1)+') for '+piEq.toFixed(0)+'.<br>';
+  if(Math.abs(P-eq)<1){ fb+='<span class="good">Nearly perfect: marginal cost plus the markup the market’s crowding allows.</span>'; }
+  else if(P>eq){ fb+='<span class="warn">Too pricey — rivals stole your customers, and your fixed cost spread over fewer units.</span>'; }
+  else { fb+='<span class="warn">You bought market share with margin you didn’t need to give up — with '+y.n+' firms, customers weren’t that price-sensitive.</span>'; }
+  if(G.y===1){ fb+='<br><i>Notice the markup collapsed from '+ (1/(b*6)).toFixed(1) +' to '+(1/(b*16)).toFixed(1)+' when firms flooded in — integration disciplines prices even though every firm has monopoly power over its own variety.</i>'; }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('lockBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.y<YEARS.length-1?'Next year':'See final score';
+  $('sProfit').textContent=G.total.toFixed(0);
+});
+$('nextBtn').addEventListener('click',function(){
+  G.y++;
+  if(G.y<YEARS.length){ year(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var score=Math.max(0,Math.min(1, G.expert>0 ? G.total/G.expert : 0));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent='Cumulative profit '+G.total.toFixed(0)+' of a possible '+G.expert.toFixed(0)+'. '+
+    (score>0.9?'You read the markup rule perfectly: price = MC + 1/(b·n).':score>0.7?'Good pricing instincts; you leaked margin in the crowded years.':'Re-read §6.3 — the optimal markup depends on how many rivals share the market.');
+  var rec='<table><thead><tr><th>Year</th><th>Your price</th><th>Best price</th><th>Your profit</th><th>Best profit</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.y+'</td><td>'+h.P.toFixed(1)+'</td><td>'+h.eq.toFixed(1)+'</td><td>'+h.pi.toFixed(0)+'</td><td>'+h.piEq.toFixed(0)+'</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.9?'mastered':score>0.7?'proficient':score>0.4?'developing':'beginning';
+  saveResult(score,outcome,{ history:G.hist, total:Math.round(G.total), version:'p3-1' });
+}
+boot();
+</script>
+</body>
+</html>

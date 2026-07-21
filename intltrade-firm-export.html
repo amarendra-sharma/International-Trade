@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export or Die — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .choice{display:block;width:100%;text-align:left;background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px 14px;margin:8px 0;cursor:pointer;color:#c9d2e8;font-size:13.5px;}
+  .choice:hover{border-color:#7c6df2;} .choice.sel{border-color:#7c6df2;background:rgba(124,109,242,.1);}
+  .choice small{display:block;color:#8b96b3;margin-top:2px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  .phi{font-size:26px;color:#f0f4ff;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 7</span>Export or Die</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Five firms. Five fates. Choose each one's global strategy.</h2>
+    <p class="sub">You are a consultant. Five firms — each with a different <b>productivity φ</b> — ask the same question: serve only the home market, pay the fixed cost to <b>export</b>, build a plant abroad (<b>FDI</b>), or shut down?</p>
+    <p class="sub">Payoffs (per year, in millions): domestic profit = <b>1.2φ − 8</b>. Exporting adds <b>0.9φ − 12</b> (shipping eats margin; 12 is the cost of foreign distribution). FDI instead adds <b>1.5φ − 24</b> (no shipping, but a whole plant). Shutting down = 0.</p>
+    <p class="sub">This is the Melitz model as a decision problem: only the productive export, only the very productive build abroad — not because managers differ, but because fixed costs sort firms. Score = value you create ÷ maximum possible.</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Meet the first client</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <h2 id="rTitle"></h2>
+    <p class="sub" id="rDesc"></p>
+    <div class="stats">
+      <div class="stat"><b class="phi" id="sPhi">–</b><span>productivity φ</span></div>
+      <div class="stat"><b id="sDom">–</b><span>domestic profit</span></div>
+      <div class="stat"><b id="sRound">1 / 5</b><span>client</span></div>
+      <div class="stat"><b id="sTotal">0</b><span>value created</span></div>
+    </div>
+    <h3>Your recommendation</h3>
+    <div id="choices"></div>
+    <button class="btn" id="goBtn" disabled>Deliver recommendation</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next client</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Consulting engagement over</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'firm-export';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   dom(φ)=1.2φ−8 ; export add-on = 0.9φ−12 ; FDI add-on = 1.5φ−24 ; shutdown 0.
+   Melitz cutoffs: operate if φ>6.67, export if φ>13.3, FDI beats export if φ>20. */
+function dom(phi){ return 1.2*phi-8; }
+function opts(phi){
+  return {
+    shut:{ label:'Shut down', small:'Profit: 0', v:0 },
+    dom:{ label:'Domestic only', small:'Profit: 1.2φ−8 = '+dom(phi).toFixed(1), v:dom(phi) },
+    exp:{ label:'Domestic + Export', small:'Adds 0.9φ−12 = '+(0.9*phi-12).toFixed(1)+' → total '+(dom(phi)+0.9*phi-12).toFixed(1), v:dom(phi)+0.9*phi-12 },
+    fdi:{ label:'Domestic + FDI plant abroad', small:'Adds 1.5φ−24 = '+(1.5*phi-24).toFixed(1)+' → total '+(dom(phi)+1.5*phi-24).toFixed(1), v:dom(phi)+1.5*phi-24 }
+  };
+}
+var CLIENTS = [
+  { phi:5,  name:'Tarnished Kettle Co.', d:'A struggling housewares maker. Old machines, thin margins. The founder wants to "go global to fix things."' },
+  { phi:9,  name:'Bristlecone Furniture', d:'A decent regional producer. Profitable at home; the CEO keeps getting invited to trade fairs abroad.' },
+  { phi:13, name:'Corvid Tools', d:'A solid mid-tier manufacturer. Just barely at the export margin — run the numbers carefully.' },
+  { phi:19, name:'Helix Precision', d:'A highly productive parts maker with export orders waiting. Is a foreign plant worth it yet?' },
+  { phi:24, name:'Nova Dynamics', d:'A superstar firm — top 2% productivity. Shipping costs are the only thing it still pays that rivals abroad don’t.' }
+];
+// shuffle order each attempt so replays differ
+for(var i=CLIENTS.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=CLIENTS[i]; CLIENTS[i]=CLIENTS[j]; CLIENTS[j]=t; }
+
+var G={ r:0, total:0, best:0, worst:0, sel:null, hist:[] };
+$('startBtn').addEventListener('click', function(){
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  round();
+});
+function round(){
+  var cl=CLIENTS[G.r]; G.sel=null;
+  var o=opts(cl.phi);
+  $('rTitle').textContent='Client '+(G.r+1)+': '+cl.name;
+  $('rDesc').textContent=cl.d;
+  $('sPhi').textContent='φ = '+cl.phi;
+  $('sDom').textContent=dom(cl.phi).toFixed(1);
+  $('sRound').textContent=(G.r+1)+' / 5';
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('goBtn').classList.remove('hidden'); $('goBtn').disabled=true;
+  var h='';
+  Object.keys(o).forEach(function(k){ h+='<button class="choice" data-k="'+k+'">'+o[k].label+'<small>'+o[k].small+'</small></button>'; });
+  $('choices').innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(b){
+    b.addEventListener('click',function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(x){x.classList.remove('sel');});
+      b.classList.add('sel'); G.sel=b.getAttribute('data-k'); $('goBtn').disabled=false;
+    });
+  });
+}
+$('goBtn').addEventListener('click',function(){
+  var cl=CLIENTS[G.r], o=opts(cl.phi);
+  var vals=Object.keys(o).map(function(k){return o[k].v;});
+  var bestV=Math.max.apply(null,vals), worstV=Math.min.apply(null,vals);
+  var bestK=Object.keys(o).filter(function(k){return o[k].v===bestV;})[0];
+  var v=o[G.sel].v;
+  G.total+=v; G.best+=bestV; G.worst+=worstV;
+  G.hist.push({ client:cl.name, phi:cl.phi, chose:o[G.sel].label, choseV:v, best:o[bestK].label, bestV:bestV });
+  var fb='<b>Outcome: '+v.toFixed(1)+'M.</b> Best available: '+o[bestK].label+' ('+bestV.toFixed(1)+'M). ';
+  if(G.sel===bestK){ fb+='<span class="good">Correct call.</span> '; } else { fb+='<span class="warn">Suboptimal.</span> '; }
+  if(cl.phi<=6){ fb+='<br><i>Melitz lesson: with φ this low, even the home market loses money. Globalization doesn’t rescue weak firms — it removes them. Cutoff to operate: φ > 6.7.</i>'; }
+  else if(cl.phi<13.3){ fb+='<br><i>Melitz lesson: profitable at home ≠ profitable abroad. The export fixed cost (12M) needs φ > 13.3 to pay for itself. Most firms in every country are in this bucket — that’s why most firms don’t export.</i>'; }
+  else if(cl.phi<=20){ fb+='<br><i>Melitz lesson: φ clears the export cutoff (13.3) but not the FDI cutoff (20). Ship products, not factories, at this productivity.</i>'; }
+  else { fb+='<br><i>Melitz lesson: past φ = 20, the FDI add-on (1.5φ−24) overtakes exporting (0.9φ−12): the plant’s fixed cost is repaid by avoiding per-unit shipping. This is the proximity-concentration tradeoff.</i>'; }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('goBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.r<CLIENTS.length-1?'Next client':'See final score';
+  $('sTotal').textContent=G.total.toFixed(1);
+});
+$('nextBtn').addEventListener('click',function(){
+  G.r++;
+  if(G.r<CLIENTS.length){ round(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var score=(G.total-G.worst)/(G.best-G.worst);
+  score=Math.max(0,Math.min(1,score));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent='You created '+G.total.toFixed(1)+'M of a possible '+G.best.toFixed(1)+'M. '+
+    (score>0.9?'You sorted the firms exactly as the fixed-cost cutoffs dictate.':score>0.6?'Mostly right — check the boundary cases against the cutoffs (operate 6.7, export 13.3, FDI 20).':'Re-read §7.2–7.3: fixed costs, not ambition, decide who exports.');
+  var rec='<table><thead><tr><th>Client (φ)</th><th>Your call</th><th>Best call</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.client+' ('+h.phi+')</td><td>'+h.chose+' → '+h.choseV.toFixed(1)+'</td><td>'+h.best+' → '+h.bestV.toFixed(1)+'</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.9?'mastered':score>0.6?'proficient':score>0.3?'developing':'beginning';
+  saveResult(score,outcome,{ history:G.hist, version:'p3-1' });
+}
+boot();
+</script>
+</body>
+</html>

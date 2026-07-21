@@ -102,14 +102,20 @@ function boot(){
       var rows=er.data||[];
       var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
       Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
-      var q=sb.from('it_arena_results').select('id',{count:'exact',head:true}).eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
       if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
       q.then(function(cr){
-        Me.used=cr.count||0;
-        $('attemptBanner').classList.remove('hidden');
-        $('attemptBanner').textContent = Me.used>=MAX_GRADED
-          ? 'Practice mode: both graded attempts used. Your grade keeps the average of your first two.'
-          : 'Graded attempt '+(Me.used+1)+' of '+MAX_GRADED+'.';
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough \u2014 this arena\u2019s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it \u2014 beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls. Closing mid-game records nothing.';
+        } else {
+          b.textContent='Practice mode \u2014 your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' \u2192 '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
       });
     });
   });

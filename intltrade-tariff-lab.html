@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tariff Laboratory — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 12px;text-align:center;}
+  .stat b{display:block;font-size:17px;color:#f0f4ff;} .stat span{font-size:10.5px;color:#8b96b3;text-transform:uppercase;letter-spacing:.05em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  input[type=range]{width:100%;accent-color:#7c6df2;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  .task{border:1px solid #7c6df2;border-radius:10px;padding:12px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:13.5px;}
+  .bar{height:16px;border-radius:4px;margin:3px 0;display:flex;align-items:center;padding-left:6px;font-size:10.5px;color:#0b0e17;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 8</span>Tariff Laboratory</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Dissect a tariff, dollar by dollar</h2>
+    <p class="sub">The home market for widgets: demand <b>D = 100 − 2P</b>, domestic supply <b>S = 2P − 20</b>, world price <b>$20</b>. At free trade, home consumes 60, makes 20, imports 40.</p>
+    <p class="sub">You'll complete three lab challenges with a live welfare decomposition — consumer surplus, producer surplus, tariff revenue, deadweight loss — updating as you drag the tariff slider. Challenge 3 makes you a <b>large country</b> whose tariff pushes the world price down, so a small tariff can actually pay.</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Enter the lab</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="task" id="taskBox"></div>
+    <h3>Tariff: $<span id="tVal">0</span> per unit</h3>
+    <input type="range" id="tariff" min="0" max="12" value="0" step="0.5">
+    <div class="stats">
+      <div class="stat"><b id="vP">–</b><span>home price</span></div>
+      <div class="stat"><b id="vM">–</b><span>imports</span></div>
+      <div class="stat"><b id="vCS">–</b><span>consumer surplus</span></div>
+      <div class="stat"><b id="vPS">–</b><span>producer surplus</span></div>
+      <div class="stat"><b id="vRev">–</b><span>tariff revenue</span></div>
+      <div class="stat"><b id="vW">–</b><span>total welfare</span></div>
+    </div>
+    <div id="bars"></div>
+    <p class="sub" id="largeNote" style="margin-top:6px;"></p>
+    <button class="btn" id="lockBtn">Submit this tariff</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next challenge</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Lab report</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'tariff-lab';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   D=100−2P, S=2P−20, Pw=20. Small country: P=20+t → CS=(50−P)², PS=(P−10)²,
+   Rev=t·M, M=40−4t, W=1000−2t². Large country: P=20+0.6t (exporters absorb
+   0.4t) → M=40−2.4t, Rev=t·M, W=1000+16t−1.68t², optimal t*≈4.76.            */
+function metrics(t, large){
+  var P = large ? 20+0.6*t : 20+t;
+  var D=100-2*P, S=2*P-20, M=Math.max(0,D-S);
+  var CS=Math.pow(50-P,2), PS=Math.pow(P-10,2), Rev=t*M;
+  var W=CS+PS+Rev;
+  return { P:P, D:D, S:S, M:M, CS:CS, PS:PS, Rev:Rev, W:W, DWL:(large?0:1000-W) };
+}
+var TASKS = [
+  { id:'A', large:false, text:'<b>Challenge 1 — The import target.</b> The widget lobby wants imports cut from 40 to exactly <b>20 units</b>. Find the tariff that does precisely that (no more, no less).',
+    score:function(t,m){ return Math.max(0, 1 - Math.abs(m.M-20)/20); },
+    explain:function(t,m){ return 'Imports = 40 − 4t, so 20 units needs t = $5. You set $'+t.toFixed(1)+' → imports '+m.M.toFixed(0)+'. Note what it cost society: DWL = 2t² = $'+(2*t*t).toFixed(0)+'.'; } },
+  { id:'B', large:false, text:'<b>Challenge 2 — The welfare question.</b> Forget the lobby. As a SMALL country (world price fixed at $20 no matter what you do), choose the tariff that maximizes TOTAL national welfare (CS + PS + revenue).',
+    score:function(t,m){ return Math.max(0, 1 - (t*t)/100); },
+    explain:function(t,m){ return 'For a small country W = 1000 − 2t²: every dollar of tariff destroys more surplus than it transfers. The answer is t = $0 — free trade. You chose $'+t.toFixed(1)+', giving up $'+(2*t*t).toFixed(0)+' of welfare.'; } },
+  { id:'C', large:true, text:'<b>Challenge 3 — Now you are LARGE.</b> Home is a big buyer: foreign exporters absorb 40% of any tariff by cutting their price (home price rises only 0.6t). Revenue is collected on the full wedge. Find the welfare-maximizing tariff now.',
+    score:function(t,m){ var Wt=1000+16*t-1.68*t*t, Wstar=1000+16*4.7619-1.68*4.7619*4.7619; return Math.max(0,(Wt-1000)/(Wstar-1000)); },
+    explain:function(t,m){ var Wt=1000+16*t-1.68*t*t; return 'Large-country welfare W = 1000 + 16t − 1.68t², maximized at t* ≈ $4.76 (W ≈ $1038). You chose $'+t.toFixed(1)+' → W = $'+Wt.toFixed(0)+'. This is the OPTIMAL TARIFF: real, but it works by taxing foreigners — and invites retaliation (next arena!).'; } }
+];
+var G={ i:0, scores:[], choices:[] };
+
+$('startBtn').addEventListener('click', function(){
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  task();
+});
+function task(){
+  var T=TASKS[G.i];
+  $('taskBox').innerHTML='Challenge '+(G.i+1)+' of 3<br>'+T.text;
+  $('largeNote').textContent = T.large ? 'Large-country mode: watch the world price — exporters are eating part of your tariff.' : '';
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden'); $('lockBtn').classList.remove('hidden');
+  $('tariff').value=0;
+  refresh();
+}
+function refresh(){
+  var T=TASKS[G.i], t=Number($('tariff').value), m=metrics(t,T.large);
+  $('tVal').textContent=t.toFixed(1);
+  $('vP').textContent='$'+m.P.toFixed(1); $('vM').textContent=m.M.toFixed(0);
+  $('vCS').textContent='$'+m.CS.toFixed(0); $('vPS').textContent='$'+m.PS.toFixed(0);
+  $('vRev').textContent='$'+m.Rev.toFixed(0);
+  $('vW').innerHTML='<span class="'+(m.W>=1000?'good':'warn')+'">$'+m.W.toFixed(0)+'</span>';
+  var mx=1000;
+  $('bars').innerHTML =
+    '<div class="bar" style="width:'+(100*m.CS/mx)+'%;background:#7c6df2;">CS '+m.CS.toFixed(0)+'</div>'+
+    '<div class="bar" style="width:'+(100*m.PS/mx)+'%;background:#2ec27e;">PS '+m.PS.toFixed(0)+'</div>'+
+    '<div class="bar" style="width:'+Math.max(2,(100*m.Rev/mx))+'%;background:#e5a54b;">Rev '+m.Rev.toFixed(0)+'</div>'+
+    (T.large?'' : '<div class="bar" style="width:'+Math.max(2,(100*m.DWL/mx))+'%;background:#e5484d;">DWL '+m.DWL.toFixed(0)+'</div>');
+}
+$('tariff').addEventListener('input',refresh);
+$('lockBtn').addEventListener('click',function(){
+  var T=TASKS[G.i], t=Number($('tariff').value), m=metrics(t,T.large);
+  var s=T.score(t,m);
+  G.scores.push(s); G.choices.push(t);
+  $('fb').innerHTML='<b>Challenge score: '+Math.round(s*100)+'%.</b> '+T.explain(t,m);
+  $('fb').classList.remove('hidden');
+  $('lockBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.i<TASKS.length-1?'Next challenge':'See lab report';
+});
+$('nextBtn').addEventListener('click',function(){
+  G.i++;
+  if(G.i<TASKS.length){ task(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var avg=G.scores.reduce(function(a,b){return a+b;},0)/G.scores.length;
+  $('finalPct').textContent=Math.round(avg*100)+'%';
+  $('finalMsg').textContent = avg>0.9?'You can take a tariff apart blindfolded.'
+    : avg>0.6?'Good instincts — nail down the algebra: imports 40−4t, DWL 2t², optimal tariff only for the large country.'
+    : 'Re-read §8.2–8.4 and run the lab again with the formulas beside you.';
+  var rec='<table><thead><tr><th>Challenge</th><th>Your tariff</th><th>Target</th><th>Score</th></tr></thead><tbody>';
+  var targets=['$5.00','$0.00','$4.76'];
+  G.scores.forEach(function(s,i){ rec+='<tr><td>'+(i+1)+'</td><td>$'+G.choices[i].toFixed(2)+'</td><td>'+targets[i]+'</td><td>'+Math.round(s*100)+'%</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=avg>0.9?'mastered':avg>0.6?'proficient':avg>0.3?'developing':'beginning';
+  saveResult(avg,outcome,{ tariffs:G.choices, scores:G.scores, version:'p3-1' });
+}
+boot();
+</script>
+</body>
+</html>

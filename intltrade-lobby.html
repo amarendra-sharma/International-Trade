@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Protection for Sale — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  input[type=range]{width:100%;accent-color:#7c6df2;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  .task{border:1px solid #7c6df2;border-radius:10px;padding:12px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:13.5px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 9</span>Protection for Sale</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Buy protection — when it's worth buying</h2>
+    <p class="sub">You run an industry's lobbying office through 5 political seasons. Each season, protection is worth a known <b>rent</b> to you, and the government grants it if your contribution outweighs its political cost of annoying consumers and exporters (Grossman-Helpman's "protection for sale," playable).</p>
+    <p class="sub">The catch: you only see an <b>estimate</b> of the government's price — intelligence gives you a range of ±3. Contribute too little and you lose your money for nothing; too much and you overpay for a tariff you could have had cheaper. Sometimes the right answer is to keep your wallet shut.</p>
+    <p class="sub">Score = your net winnings vs. what a perfectly calibrated lobbyist would expect to win with the same intelligence.</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Open the office</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="task" id="taskBox"></div>
+    <div class="stats">
+      <div class="stat"><b id="sRent">–</b><span>rent if protected</span></div>
+      <div class="stat"><b id="sThresh">–</b><span>gov's price (est. ±3)</span></div>
+      <div class="stat"><b id="sRound">1 / 5</b><span>season</span></div>
+      <div class="stat"><b id="sBank">0</b><span>net winnings</span></div>
+    </div>
+    <h3>Your contribution: $<span id="cVal">0</span>M</h3>
+    <input type="range" id="contrib" min="0" max="30" value="0" step="1">
+    <p class="sub" id="evLine"></p>
+    <button class="btn" id="goBtn">Deliver the check</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next season</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Office closed</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'lobby';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   Season: rent R, threshold T (est shown), noise u ~ uniform{-3..3}.
+   Protection granted iff contribution c ≥ T + u. Payoff = (granted? R:0) − c.
+   Expert = EV-maximizing c over the noise distribution (computed per season);
+   realized with the SAME noise draw as the player faces.                    */
+var SEASONS = [
+  { R:20, T:8,  name:'Sugar season', d:'Your sugar producers are few and organized; consumer cost per household is pennies. The government’s price for a tariff is LOW. Classic concentrated-benefits, diffuse-costs.' },
+  { R:15, T:18, name:'Steel season', d:'Steel protection would hammer every downstream manufacturer — the government’s political price is HIGH. Sometimes the rational lobby walks away.' },
+  { R:5,  T:6,  name:'Coalition season', d:'You represent one of five firms splitting the rent equally (your slice: $5M) — but YOUR office pays the whole contribution. Olson’s free-rider problem, live.' },
+  { R:20, T:4,  name:'Election season', d:'Campaign season: contributions are suddenly very persuasive and consumer anger is discounted. The same sugar tariff is on sale.' },
+  { R:22, T:14, name:'Counter-lobby season', d:'Exporters fear retaliation and are lobbying AGAINST you, raising the government’s effective price. Outbid them or stand down?' }
+];
+function evBest(R,T){
+  var best={c:0,ev:0};
+  for(var c=0;c<=30;c++){
+    var wins=0,total=0;
+    for(var u=-3;u<=3;u++){ total++; if(c>=T+u){ wins++; } }
+    var ev=(wins/total)*R - c;
+    if(ev>best.ev){ best={c:c,ev:ev}; }
+  }
+  return best;
+}
+var G={ r:0, bank:0, expert:0, worst:0, hist:[], noises:[] };
+SEASONS.forEach(function(){ G.noises.push(Math.floor(Math.random()*7)-3); });
+
+$('startBtn').addEventListener('click', function(){
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  season();
+});
+function season(){
+  var S=SEASONS[G.r];
+  $('taskBox').innerHTML='<b>'+S.name+'.</b> '+S.d;
+  $('sRent').textContent='$'+S.R+'M'; $('sThresh').textContent='≈ $'+S.T+'M';
+  $('sRound').textContent=(G.r+1)+' / 5';
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden'); $('goBtn').classList.remove('hidden');
+  $('contrib').value=0; refresh();
+}
+function refresh(){
+  var S=SEASONS[G.r], c=Number($('contrib').value);
+  $('cVal').textContent=c;
+  var wins=0; for(var u=-3;u<=3;u++){ if(c>=S.T+u){ wins++; } }
+  var p=wins/7, ev=p*S.R-c;
+  $('evLine').innerHTML='Win chance ≈ <b>'+Math.round(p*100)+'%</b> · expected net: <b class="'+(ev>=0?'good':'bad')+'">'+(ev>=0?'+':'')+ev.toFixed(1)+'M</b>'+(c===0?' (standing down)':'');
+}
+$('contrib').addEventListener('input',refresh);
+$('goBtn').addEventListener('click',function(){
+  var S=SEASONS[G.r], c=Number($('contrib').value), u=G.noises[G.r];
+  var granted = c>0 && c>=S.T+u;
+  var pay=(granted?S.R:0)-c;
+  var ex=evBest(S.R,S.T);
+  var exGranted = ex.c>0 && ex.c>=S.T+u;
+  var exPay=(exGranted?S.R:0)-ex.c;
+  // worst realized choice this season (for score floor)
+  var worst=0; for(var cc=0;cc<=30;cc++){ var g=cc>0&&cc>=S.T+u; var pp=(g?S.R:0)-cc; if(pp<worst){ worst=pp; } }
+  G.bank+=pay; G.expert+=exPay; G.worst+=worst;
+  G.hist.push({ season:S.name, c:c, granted:granted, pay:pay, exC:ex.c, exPay:exPay });
+  var fb='<b>'+(granted?'Protection GRANTED.':'Protection denied.')+'</b> The government’s true price this season was $'+(S.T+u)+'M. ';
+  fb+='Your net: <b class="'+(pay>=0?'good':'bad')+'">'+(pay>=0?'+':'')+pay+'M</b>. A perfectly calibrated lobby would have offered $'+ex.c+'M (net '+(exPay>=0?'+':'')+exPay+'M).<br>';
+  if(G.r===1&&c===0){ fb+='<span class="good">Correct walk-away: when the political price exceeds the rent, rational lobbies stay home. That’s why widely-consumed goods get less protection.</span>'; }
+  if(G.r===2&&c>5){ fb+='<span class="warn">You paid more than your $5M slice of the rent could ever return — the free-rider problem punished you. Small, concentrated groups lobby; big diffuse ones don’t.</span>'; }
+  if(G.r===3&&granted&&c<=8){ fb+='<span class="good">Election years are the bargain bin for protection — exactly what the empirical literature finds about contribution timing.</span>'; }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('goBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.r<SEASONS.length-1?'Next season':'Final accounting';
+  $('sBank').textContent=(G.bank>=0?'+':'')+G.bank+'M';
+});
+$('nextBtn').addEventListener('click',function(){
+  G.r++;
+  if(G.r<SEASONS.length){ season(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var score=(G.bank-G.worst)/(G.expert-G.worst);
+  score=Math.max(0,Math.min(1,score));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent='Net winnings '+(G.bank>=0?'+':'')+G.bank+'M vs a calibrated lobbyist’s '+(G.expert>=0?'+':'')+G.expert.toFixed(0)+'M on the same seasons. '+
+    (score>0.85?'You price political influence like a professional.':score>0.55?'Decent — compare your bids with the EV readout you had on screen.':'Re-read §9.3: contribute only when rent > political price, and never more than the gap.');
+  var rec='<table><thead><tr><th>Season</th><th>Your bid</th><th>Result</th><th>Your net</th><th>Expert bid</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.season+'</td><td>$'+h.c+'M</td><td>'+(h.granted?'granted':'denied')+'</td><td class="'+(h.pay>=0?'good':'bad')+'">'+(h.pay>=0?'+':'')+h.pay+'M</td><td>$'+h.exC+'M</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.85?'mastered':score>0.55?'proficient':score>0.25?'developing':'beginning';
+  saveResult(score,outcome,{ history:G.hist, noises:G.noises, version:'p3-1' });
+}
+boot();
+</script>
+</body>
+</html>
