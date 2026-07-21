@@ -122,7 +122,19 @@
   .author-edit .hint{font-size:11.5px;color:var(--faint);margin-top:4px;}
   .author-msg{font-size:12.5px;margin-top:10px;font-family:var(--sans);}
   .author-msg.ok{color:var(--green);} .author-msg.err{color:var(--rose);}
+  /* paginated pages + chapter navigation */
+  .page{display:none;}
+  .page.active{display:block;animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .chapter-nav{display:flex;justify-content:space-between;align-items:stretch;gap:12px;margin:44px 0 8px;font-family:var(--sans);}
+  .cn-btn{cursor:pointer;background:var(--panel);border:1px solid var(--line2);color:var(--bright);font-size:14px;font-weight:600;border-radius:11px;padding:13px 20px;line-height:1.3;text-align:left;max-width:49%;}
+  .cn-btn .cn-k{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:2px;}
+  .cn-btn:hover{border-color:var(--violet);}
+  .cn-next{background:var(--violet);border-color:var(--violet);color:#fff;text-align:right;margin-left:auto;}
+  .cn-next .cn-k{color:rgba(255,255,255,.72);}
+  .cn-next:hover{filter:brightness(1.08);border-color:var(--violet);}
 </style>
+<noscript><style>.page{display:block!important}</style></noscript>
 </head>
 <body>
 <div class="shell">
@@ -149,7 +161,7 @@
 
   <main>
     <!-- ==================== TITLE PAGE ==================== -->
-    <header class="titlepage" id="title">
+    <header class="titlepage page" id="title">
       <div class="kicker">MacroNations · Undergraduate Economics</div>
       <h1>International Trade</h1>
       <div class="sub">A Modern Analytical Approach</div>
@@ -158,7 +170,7 @@
     </header>
 
     <!-- ==================== CHAPTER 1 ==================== -->
-    <section class="chapter" id="chapter-1">
+    <section class="chapter page" id="chapter-1">
       <div class="chlabel">Chapter One</div>
       <h2 class="chtitle">Why Nations Trade</h2>
       <div class="chmeta">Estimated reading time: 18 minutes · Live data updates on load</div>
@@ -450,7 +462,7 @@ c100.7 8.3 195.3 44 280 108 55.3 42 101.7 93 139 153l9 14c2.7-4 5.7-8.7 9-14
     </section>
 
     <!-- ==================== STUBS 2–14 ==================== -->
-    <section class="chapter" id="chapter-2">
+    <section class="chapter page" id="chapter-2">
       <div class="chlabel">Chapter Two</div>
       <h2 class="chtitle">The Ricardian Model</h2>
       <div class="chmeta">Estimated reading time: 26 minutes · Live productivity data updates on load</div>
@@ -680,21 +692,21 @@ c100.7 8.3 195.3 44 280 108 55.3 42 101.7 93 139 153l9 14c2.7-4 5.7-8.7 9-14
         <span>MacroNations Press · Chapter 2</span>
       </div>
     </section>
-    <section class="chapter" id="chapter-3"><div class="stub"><div class="chlabel">Chapter Three</div><h2>Specific Factors and Income Distribution</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-4"><div class="stub"><div class="chlabel">Chapter Four</div><h2>Heckscher–Ohlin</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-5"><div class="stub"><div class="chlabel">Chapter Five</div><h2>The Standard Trade Model</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-6"><div class="stub"><div class="chlabel">Chapter Six</div><h2>Economies of Scale and New Trade Theory</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-7"><div class="stub"><div class="chlabel">Chapter Seven</div><h2>Firms in the Global Economy</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-8"><div class="stub"><div class="chlabel">Chapter Eight</div><h2>Tariffs and Trade Policy</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-9"><div class="stub"><div class="chlabel">Chapter Nine</div><h2>The Political Economy of Protection</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-10"><div class="stub"><div class="chlabel">Chapter Ten</div><h2>Trade Wars and Strategic Policy</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-11"><div class="stub"><div class="chlabel">Chapter Eleven</div><h2>Trade Agreements and the WTO</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-12"><div class="stub"><div class="chlabel">Chapter Twelve</div><h2>Exchange Rates and Trade</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-13"><div class="stub"><div class="chlabel">Chapter Thirteen</div><h2>Trade and Development</h2><p>In preparation.</p></div></section>
-    <section class="chapter" id="chapter-14"><div class="stub"><div class="chlabel">Chapter Fourteen</div><h2>Quantitative Applications</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-3"><div class="stub"><div class="chlabel">Chapter Three</div><h2>Specific Factors and Income Distribution</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-4"><div class="stub"><div class="chlabel">Chapter Four</div><h2>Heckscher–Ohlin</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-5"><div class="stub"><div class="chlabel">Chapter Five</div><h2>The Standard Trade Model</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-6"><div class="stub"><div class="chlabel">Chapter Six</div><h2>Economies of Scale and New Trade Theory</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-7"><div class="stub"><div class="chlabel">Chapter Seven</div><h2>Firms in the Global Economy</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-8"><div class="stub"><div class="chlabel">Chapter Eight</div><h2>Tariffs and Trade Policy</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-9"><div class="stub"><div class="chlabel">Chapter Nine</div><h2>The Political Economy of Protection</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-10"><div class="stub"><div class="chlabel">Chapter Ten</div><h2>Trade Wars and Strategic Policy</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-11"><div class="stub"><div class="chlabel">Chapter Eleven</div><h2>Trade Agreements and the WTO</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-12"><div class="stub"><div class="chlabel">Chapter Twelve</div><h2>Exchange Rates and Trade</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-13"><div class="stub"><div class="chlabel">Chapter Thirteen</div><h2>Trade and Development</h2><p>In preparation.</p></div></section>
+    <section class="chapter page" id="chapter-14"><div class="stub"><div class="chlabel">Chapter Fourteen</div><h2>Quantitative Applications</h2><p>In preparation.</p></div></section>
 
     <!-- ==================== ABOUT THE AUTHOR ==================== -->
-    <section id="about-author">
+    <section class="page" id="about-author">
       <div class="chlabel">About the Author</div>
       <div class="author-card">
         <img id="authorPhoto" class="author-photo ph" alt="Author photograph" src="" data-empty="1">
@@ -731,20 +743,56 @@ c100.7 8.3 195.3 44 280 108 55.3 42 101.7 93 139 153l9 14c2.7-4 5.7-8.7 9-14
 </div>
 
 <script>
-/* ---------- TOC active-link highlight ---------- */
+/* ---------- Paginated chapters: one page at a time with prev/next ---------- */
 (function(){
+  var pages = [document.getElementById('title')]
+    .concat(Array.prototype.slice.call(document.querySelectorAll('main section.chapter')))
+    .concat([document.getElementById('about-author')])
+    .filter(Boolean);
+  var ids = pages.map(function(p){ return p.id; });
   var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
-  var map = {}; links.forEach(function(a){ map[a.getAttribute('href').slice(1)] = a; });
-  var secs = Array.prototype.slice.call(document.querySelectorAll('main section, header.titlepage'));
-  var obs = new IntersectionObserver(function(es){
-    es.forEach(function(e){
-      if(e.isIntersecting){
-        links.forEach(function(a){ a.classList.remove('on'); });
-        var id = e.target.id; if(map[id]){ map[id].classList.add('on'); }
-      }
-    });
-  }, { rootMargin:'-10% 0px -80% 0px' });
-  secs.forEach(function(s){ obs.observe(s); });
+
+  function kicker(id){
+    if(id==='title'){ return 'Cover'; }
+    if(id==='about-author'){ return 'Back matter'; }
+    return 'Chapter ' + id.replace('chapter-','');
+  }
+  function label(id){
+    if(id==='title'){ return 'Title page'; }
+    if(id==='about-author'){ return 'About the Author'; }
+    var el=document.getElementById(id);
+    var h=el?el.querySelector('h2.chtitle, .stub h2'):null;
+    return h?h.textContent:('Chapter '+id.replace('chapter-',''));
+  }
+  // Build a prev/next bar for each page.
+  pages.forEach(function(p, i){
+    p.classList.add('page');
+    if(p.querySelector('.chapter-nav')) return;
+    var nav=document.createElement('div'); nav.className='chapter-nav';
+    var prev=i>0?ids[i-1]:null, next=i<ids.length-1?ids[i+1]:null;
+    var h='';
+    h += prev ? '<button class="cn-btn cn-prev" data-goto="'+prev+'"><span class="cn-k">&larr; '+kicker(prev)+'</span>'+label(prev)+'</button>' : '<span></span>';
+    h += next ? '<button class="cn-btn cn-next" data-goto="'+next+'"><span class="cn-k">'+kicker(next)+' &rarr;</span>'+label(next)+'</button>' : '<span></span>';
+    nav.innerHTML=h;
+    p.appendChild(nav);
+  });
+
+  function show(id){
+    var i=ids.indexOf(id); if(i<0){ i=0; id=ids[0]; }
+    pages.forEach(function(p){ p.classList.toggle('active', p.id===id); });
+    links.forEach(function(a){ a.classList.toggle('on', a.getAttribute('href')==='#'+id); });
+    try{ history.replaceState(null,'', id==='title'?location.pathname+location.search:'#'+id); }catch(e){}
+    window.scrollTo(0,0);
+  }
+  document.addEventListener('click', function(e){
+    var t=e.target;
+    var b=t.closest?t.closest('[data-goto]'):null;
+    if(b){ e.preventDefault(); show(b.getAttribute('data-goto')); return; }
+    var a=t.closest?t.closest('nav.toc a'):null;
+    if(a){ e.preventDefault(); show(a.getAttribute('href').slice(1)); }
+  });
+  window.addEventListener('hashchange', function(){ show((location.hash||'#title').slice(1)); });
+  show((location.hash||'#title').slice(1));
 })();
 
 /* ---------- Live World Bank data + Figure 1.1 chart ---------- */
