@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Currency Room — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .choice{display:block;width:100%;text-align:left;background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px 14px;margin:8px 0;cursor:pointer;color:#c9d2e8;font-size:13.5px;}
+  .choice:hover{border-color:#7c6df2;} .choice.sel{border-color:#7c6df2;background:rgba(124,109,242,.1);}
+  .choice small{display:block;color:#8b96b3;margin-top:2px;}
+  .choice.off{opacity:.4;pointer-events:none;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 12px;text-align:center;}
+  .stat b{display:block;font-size:17px;color:#f0f4ff;} .stat span{font-size:10.5px;color:#8b96b3;text-transform:uppercase;letter-spacing:.05em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  .task{border:1px solid #7c6df2;border-radius:10px;padding:12px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:13.5px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 12</span>Currency Room</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Six quarters at the central bank's trade desk</h2>
+    <p class="sub">You steer <b>Meridia's</b> exchange rate for six quarters. E is the real exchange rate — <b>higher E = weaker currency = more competitive exports</b>. The trade balance responds to E <i>with a one-quarter lag</i>, and a depreciation actually <b>worsens</b> the balance in the quarter you do it (imports get pricier immediately — the J-curve) before helping later.</p>
+    <p class="sub">Each quarter: cut rates (depreciate, but stoke inflation), raise rates (appreciate, cool inflation), spend scarce reserves to prop the currency, or hold. Welfare each quarter rewards a balanced trade account and punishes inflation above 4%. Two shocks are coming — an export slump in Q3 and an import-price spike in Q5.</p>
+    <p class="sub">Score = your total welfare against the mathematically best six-move sequence (computed by brute force over all 4,096 policies).</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Take the desk</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="task" id="qBox"></div>
+    <div class="stats">
+      <div class="stat"><b id="sQ">1 / 6</b><span>quarter</span></div>
+      <div class="stat"><b id="sE">1.00</b><span>real exch. rate</span></div>
+      <div class="stat"><b id="sTB">–2.0</b><span>trade balance</span></div>
+      <div class="stat"><b id="sInf">3.0%</b><span>inflation</span></div>
+      <div class="stat"><b id="sRes">3</b><span>fx reserves</span></div>
+      <div class="stat"><b id="sW">0</b><span>welfare</span></div>
+    </div>
+    <h3>This quarter's move</h3>
+    <div id="choices"></div>
+    <button class="btn" id="goBtn" disabled>Execute</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next quarter</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Term over</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'currency';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model (fully deterministic) ----------------
+   State: E, TB, infl, res. Actions: cut, raise, intervene, hold.
+     cut:       E +0.06, infl +1.2
+     raise:     E −0.04, infl −1.0 (floor 0)
+     intervene: E −0.06, infl −0.2, res −1 (needs res ≥ 1)
+     hold:      —
+   Transition each quarter q (after the action):
+     TB' = 0.5·TB + 20·(E_before_action − 1) − 8·max(0, ΔE)   [J-curve bite]
+           + shock (q3: −4 export slump; q5 shock hits inflation instead)
+     infl' = infl + action effect + (q5: +1.5 import-price spike), floor 0
+     welfare_q = 10 − |TB'| − 2·max(0, infl' − 4)
+   Same function drives play and the brute-force optimum, so the benchmark
+   is exact.                                                                */
+var ACTIONS = {
+  cut:{ label:'Cut interest rates', small:'Depreciate: E +0.06 (exports gain NEXT quarter, J-curve bites now) · inflation +1.2' },
+  raise:{ label:'Raise interest rates', small:'Appreciate: E −0.04 · inflation −1.0' },
+  intervene:{ label:'Sell FX reserves', small:'Prop the currency: E −0.06 · inflation −0.2 · uses 1 reserve' },
+  hold:{ label:'Hold steady', small:'No change — let last quarter’s policy feed through' }
+};
+var QUARTERS = [
+  { t:'Q1 — Settling in', d:'You inherit a −2.0 trade deficit and 3% inflation. The lag means whatever you do to E now pays off from Q2 onward.' },
+  { t:'Q2 — Feed-through', d:'Last quarter’s exchange-rate move is now hitting export orders.' },
+  { t:'Q3 — EXPORT SLUMP', d:'Your biggest trade partner’s economy stalls: trade balance takes a −4.0 hit this quarter regardless of policy.' },
+  { t:'Q4 — Repair work', d:'Markets are watching whether you can rebuild the balance without letting inflation rip.' },
+  { t:'Q5 — IMPORT PRICE SPIKE', d:'Global energy prices jump: inflation +1.5 this quarter. A weak currency makes it worse in real terms.' },
+  { t:'Q6 — Final quarter', d:'Land the plane: balanced trade, tame inflation.' }
+];
+function step(st, a, q){
+  var s={ E:st.E, TB:st.TB, infl:st.infl, res:st.res };
+  var E0=s.E, dE=0;
+  if(a==='cut'){ dE=0.06; s.infl+=1.2; }
+  else if(a==='raise'){ dE=-0.04; s.infl-=1.0; }
+  else if(a==='intervene'){ if(s.res<1){ return null; } dE=-0.06; s.infl-=0.2; s.res-=1; }
+  s.E=Math.round((s.E+dE)*100)/100;
+  if(s.infl<0){ s.infl=0; }
+  var shockTB = (q===2)?-4:0;
+  if(q===4){ s.infl+=1.5; }
+  s.TB = 0.5*s.TB + 20*(E0-1) - 8*Math.max(0,dE) + shockTB;
+  s.TB = Math.round(s.TB*100)/100;
+  var w = 10 - Math.abs(s.TB) - 2*Math.max(0, s.infl-4);
+  return { st:s, w:w };
+}
+var START={ E:1.00, TB:-2.0, infl:3.0, res:3 };
+var KEYS=['cut','raise','intervene','hold'];
+function bruteForce(){
+  var best=-1e9, worst=1e9, bestSeq=null;
+  var total=Math.pow(4,6);
+  for(var i=0;i<total;i++){
+    var seq=[], x=i;
+    for(var k=0;k<6;k++){ seq.push(KEYS[x%4]); x=Math.floor(x/4); }
+    var st={E:START.E,TB:START.TB,infl:START.infl,res:START.res}, W=0, ok=true;
+    for(var q=0;q<6;q++){
+      var r=step(st,seq[q],q);
+      if(!r){ ok=false; break; }
+      st=r.st; W+=r.w;
+    }
+    if(!ok){ continue; }
+    if(W>best){ best=W; bestSeq=seq; }
+    if(W<worst){ worst=W; }
+  }
+  return { best:best, worst:worst, seq:bestSeq };
+}
+var BF=null;
+var G={ q:0, st:{E:START.E,TB:START.TB,infl:START.infl,res:START.res}, W:0, sel:null, hist:[] };
+
+$('startBtn').addEventListener('click', function(){
+  BF=bruteForce();
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  quarter();
+});
+function quarter(){
+  var Q=QUARTERS[G.q]; G.sel=null;
+  $('qBox').innerHTML='<b>'+Q.t+'.</b> '+Q.d;
+  paint();
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('goBtn').classList.remove('hidden'); $('goBtn').disabled=true;
+  var h='';
+  Object.keys(ACTIONS).forEach(function(k){
+    var off = (k==='intervene' && G.st.res<1) ? ' off' : '';
+    h+='<button class="choice'+off+'" data-a="'+k+'">'+ACTIONS[k].label+'<small>'+ACTIONS[k].small+'</small></button>';
+  });
+  $('choices').innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(b){
+    b.addEventListener('click',function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(x){x.classList.remove('sel');});
+      b.classList.add('sel'); G.sel=b.getAttribute('data-a'); $('goBtn').disabled=false;
+    });
+  });
+}
+function paint(){
+  $('sQ').textContent=(G.q+1)+' / 6';
+  $('sE').textContent=G.st.E.toFixed(2);
+  $('sTB').innerHTML='<span class="'+(Math.abs(G.st.TB)<2?'good':'warn')+'">'+G.st.TB.toFixed(1)+'</span>';
+  $('sInf').innerHTML='<span class="'+(G.st.infl<=4?'good':'bad')+'">'+G.st.infl.toFixed(1)+'%</span>';
+  $('sRes').textContent=G.st.res;
+  $('sW').textContent=G.W.toFixed(1);
+}
+$('goBtn').addEventListener('click',function(){
+  var r=step(G.st,G.sel,G.q);
+  var prevTB=G.st.TB;
+  G.st=r.st; G.W+=r.w;
+  G.hist.push({ q:G.q+1, a:G.sel, E:G.st.E, TB:G.st.TB, infl:G.st.infl, w:r.w });
+  var fb='<b>'+ACTIONS[G.sel].label+'.</b> Welfare this quarter: <b class="'+(r.w>=7?'good':(r.w>=4?'warn':'bad'))+'">'+r.w.toFixed(1)+'</b> / 10.<br>';
+  if(G.sel==='cut' && G.st.TB<prevTB){ fb+='<span class="warn">J-curve in action: you depreciated and the balance got WORSE this quarter (pricier imports bill first). The competitiveness gain arrives next quarter via the lag.</span>'; }
+  if(G.sel==='cut' && G.st.infl>4){ fb+=' <span class="bad">Inflation is now above target — each further point costs you 2 welfare per quarter.</span>'; }
+  if(G.sel==='raise' && prevTB<-1){ fb+=' <span class="warn">A stronger currency with a deficit? Your exporters would like a word — expect the balance to sag next quarter.</span>'; }
+  if(G.sel==='intervene'){ fb+=' Reserves remaining: '+G.st.res+'. <i>Reserves are finite — this is why one-way pegs eventually crack.</i>'; }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('goBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.q<5?'Next quarter':'Final review';
+  paint();
+});
+$('nextBtn').addEventListener('click',function(){
+  G.q++;
+  if(G.q<6){ quarter(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var score=(G.W-BF.worst)/(BF.best-BF.worst);
+  score=Math.max(0,Math.min(1,score));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent='Total welfare '+G.W.toFixed(1)+' — the best possible sequence scores '+BF.best.toFixed(1)+' ('+BF.seq.join(' → ')+'). '+
+    (score>0.85?'Central-banker material.':score>0.6?'Solid hands — study the optimal sequence: notice it pre-positions E BEFORE the Q3 slump.':'The lags beat you. Re-read §12.3 on the J-curve and pass-through, then take attempt two.');
+  var rec='<table><thead><tr><th>Q</th><th>Move</th><th>E</th><th>Trade balance</th><th>Inflation</th><th>Welfare</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.q+'</td><td>'+h.a+'</td><td>'+h.E.toFixed(2)+'</td><td>'+h.TB.toFixed(1)+'</td><td>'+h.infl.toFixed(1)+'%</td><td>'+h.w.toFixed(1)+'</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.85?'mastered':score>0.6?'proficient':score>0.3?'developing':'beginning';
+  saveResult(score,outcome,{ history:G.hist, best:Math.round(BF.best*10)/10, bestSeq:BF.seq, version:'p4-1' });
+}
+boot();
+</script>
+</body>
+</html>

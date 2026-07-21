@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Model Solver — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  .qbox{border:1px solid #7c6df2;border-radius:10px;padding:14px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:14px;line-height:1.7;}
+  input[type=number]{background:#0f1420;border:1px solid rgba(255,255,255,.14);border-radius:9px;color:#f0f4ff;font-size:15px;padding:10px 14px;width:200px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 14</span>Trade Model Solver</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Five models. Five numbers. Show the algebra who's boss.</h2>
+    <p class="sub">The capstone lab: solve one numeric problem from each core model of the course — Ricardian opportunity cost, autarky optimum, tariff incidence, the optimal tariff, and a gravity prediction. Parameters are randomized every attempt, so bring the method, not memorized answers.</p>
+    <p class="sub">Two tries per question: full credit first try, half credit second. Answers within 1% count. A worked solution appears after each question either way.</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Start the lab</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="qbox" id="qBox"></div>
+    <div class="stats">
+      <div class="stat"><b id="sQ">1 / 5</b><span>question</span></div>
+      <div class="stat"><b id="sTry">1st try</b><span>attempt</span></div>
+      <div class="stat"><b id="sPts">0</b><span>points</span></div>
+    </div>
+    <h3>Your answer</h3>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <input type="number" id="ans" step="any" placeholder="number">
+      <button class="btn" id="goBtn">Submit</button>
+    </div>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next question</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Lab complete</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again (new parameters)</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'quant-lab';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- question generators (randomized per attempt) ---------------- */
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function makeQuestions(){
+  var qs=[];
+  // Q1 Ricardian opportunity cost
+  (function(){
+    var aLC=pick([2,3,4,5]), aLW=pick([1,2,4,5].filter(function(x){return x!==aLC;}));
+    qs.push({
+      topic:'Ricardian model',
+      text:'Home needs <b>'+aLC+'</b> hours of labor per yard of cloth and <b>'+aLW+'</b> hours per bushel of wheat. What is Home’s <b>opportunity cost of one yard of cloth</b>, in bushels of wheat?',
+      ans:aLC/aLW,
+      sol:'Opportunity cost of cloth = a<sub>LC</sub>/a<sub>LW</sub> = '+aLC+'/'+aLW+' = '+(aLC/aLW).toFixed(3)+' bushels per yard. Producing one yard uses '+aLC+' hours, which could instead have made '+aLC+'/'+aLW+' bushels.'
+    });
+  })();
+  // Q2 autarky optimum
+  (function(){
+    var L=pick([100,120,180,240]), aLC=pick([2,3,4]);
+    qs.push({
+      topic:'Autarky optimum',
+      text:'A closed economy has <b>L = '+L+'</b> workers, needs <b>'+aLC+'</b> workers per unit of cloth, and consumers have Cobb-Douglas utility U = √(C<sub>cloth</sub> × C<sub>wheat</sub>) — so they optimally spend <b>half</b> of the labor force on each good. How many units of <b>cloth</b> does it consume?',
+      ans:L/(2*aLC),
+      sol:'With 50/50 Cobb-Douglas spending, half the labor ('+L+'/2 = '+(L/2)+' workers) makes cloth: '+(L/2)+' / '+aLC+' = '+(L/(2*aLC)).toFixed(2)+' units.'
+    });
+  })();
+  // Q3 tariff & imports
+  (function(){
+    var a=pick([100,120]), b=2, c=20, d=2, Pw=pick([18,20,22]), t=pick([2,3,4]);
+    var P=Pw+t, M=(a-b*P)-(d*P-c);
+    qs.push({
+      topic:'Tariff incidence (small country)',
+      text:'Home demand: D = '+a+' − '+b+'P. Home supply: S = '+d+'P − '+c+'. World price: $'+Pw+'. A small country imposes a <b>$'+t+'</b> specific tariff. What are <b>imports</b> after the tariff?',
+      ans:M,
+      sol:'Domestic price rises to P<sub>w</sub>+t = $'+P+'. D = '+a+' − '+b+'×'+P+' = '+(a-b*P)+'; S = '+d+'×'+P+' − '+c+' = '+(d*P-c)+'. Imports = D − S = '+M+'.'
+    });
+  })();
+  // Q4 optimal tariff
+  (function(){
+    var g=pick([12,16,20]), h=pick([1.5,2,2.5]);
+    qs.push({
+      topic:'Optimal tariff (large country)',
+      text:'A large country’s welfare as a function of its tariff is W(t) = 1000 + '+g+'t − '+h+'t². What tariff <b>t*</b> maximizes welfare? (Hint: dW/dt = 0.)',
+      ans:g/(2*h),
+      sol:'dW/dt = '+g+' − '+(2*h)+'t = 0 → t* = '+g+'/'+(2*h)+' = '+(g/(2*h)).toFixed(2)+'. The first-order condition balances the terms-of-trade gain ('+g+') against the rising distortion (2×'+h+'t).'
+    });
+  })();
+  // Q5 gravity
+  (function(){
+    var A=pick([2,3]), g1=pick([800,1000]), g2=pick([300,500]), dist=pick([2000,4000,5000]);
+    var T=A*g1*g2/dist;
+    qs.push({
+      topic:'Gravity equation',
+      text:'Predicted trade between two countries: T = A × (GDP₁ × GDP₂) / distance, with A = '+A+', GDP₁ = '+g1+', GDP₂ = '+g2+' (billions), distance = '+dist+' km. What is <b>predicted trade T</b>?',
+      ans:T,
+      sol:'T = '+A+' × ('+g1+' × '+g2+') / '+dist+' = '+A+' × '+(g1*g2).toLocaleString()+' / '+dist+' = '+T.toFixed(1)+'. Bigger economies trade more; distance divides it away — the most robust empirical law in trade.'
+    });
+  })();
+  return qs;
+}
+var QS=makeQuestions();
+var G={ i:0, tries:0, pts:0, hist:[] };
+
+$('startBtn').addEventListener('click', function(){ $('intro').classList.add('hidden'); $('play').classList.remove('hidden'); ask(); });
+function ask(){
+  var q=QS[G.i]; G.tries=0;
+  $('qBox').innerHTML='<b>Question '+(G.i+1)+' — '+q.topic+'.</b><br>'+q.text;
+  $('sQ').textContent=(G.i+1)+' / 5'; $('sTry').textContent='1st try';
+  $('ans').value=''; $('ans').disabled=false; $('goBtn').disabled=false;
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('ans').focus();
+}
+function close(q, got){ // within 1% (or .02 absolute for small answers)
+  var tol=Math.max(Math.abs(q.ans)*0.01, 0.02);
+  return Math.abs(got-q.ans)<=tol;
+}
+$('goBtn').addEventListener('click', submit);
+$('ans').addEventListener('keydown', function(e){ if(e.key==='Enter'){ submit(); } });
+function submit(){
+  var q=QS[G.i], got=parseFloat($('ans').value);
+  if(isNaN(got)){ return; }
+  G.tries++;
+  if(close(q,got)){
+    var credit=G.tries===1?1:0.5;
+    G.pts+=credit;
+    G.hist.push({ topic:q.topic, tries:G.tries, credit:credit });
+    $('fb').innerHTML='<span class="good">✓ Correct'+(G.tries===2?' (second try — half credit)':'')+'.</span><br><b>Solution:</b> '+q.sol;
+    endQ();
+  } else if(G.tries===1){
+    $('sTry').textContent='2nd try';
+    $('fb').innerHTML='<span class="warn">✗ Not within 1%. One more try — half credit if you get it now.</span>';
+    $('fb').classList.remove('hidden');
+    $('ans').select();
+  } else {
+    G.hist.push({ topic:q.topic, tries:2, credit:0 });
+    $('fb').innerHTML='<span class="bad">✗ The answer was '+ (Math.round(q.ans*1000)/1000) +'.</span><br><b>Solution:</b> '+q.sol;
+    endQ();
+  }
+  $('sPts').textContent=G.pts;
+}
+function endQ(){
+  $('fb').classList.remove('hidden');
+  $('ans').disabled=true; $('goBtn').disabled=true;
+  $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.i<QS.length-1?'Next question':'See results';
+}
+$('nextBtn').addEventListener('click',function(){
+  G.i++;
+  if(G.i<QS.length){ ask(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var score=G.pts/QS.length;
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent=G.pts+' of '+QS.length+' points. '+
+    (score>0.9?'The models are yours now.':score>0.6?'Solid quantitative footing — rework the misses with the posted solutions.':'Numbers need practice: redo the worked examples in Chapter 14, then use your second attempt.');
+  var rec='<table><thead><tr><th>Topic</th><th>Tries</th><th>Credit</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.topic+'</td><td>'+h.tries+'</td><td>'+(h.credit===1?'full':(h.credit===0.5?'half':'none'))+'</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.9?'mastered':score>0.6?'proficient':score>0.3?'developing':'beginning';
+  saveResult(score,outcome,{ history:G.hist, version:'p4-1' });
+}
+boot();
+</script>
+</body>
+</html>

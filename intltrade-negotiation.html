@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Negotiation Table — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .choice{display:block;width:100%;text-align:left;background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px 14px;margin:8px 0;cursor:pointer;color:#c9d2e8;font-size:13.5px;}
+  .choice:hover{border-color:#7c6df2;} .choice.sel{border-color:#7c6df2;background:rgba(124,109,242,.1);}
+  .choice small{display:block;color:#8b96b3;margin-top:2px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .gradebox{border:1px solid rgba(124,109,242,.45);background:rgba(124,109,242,.08);border-radius:10px;padding:10px 14px;font-size:12.5px;color:#c9d2e8;margin:10px 0;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  .deal{border:1px solid #7c6df2;border-radius:10px;padding:12px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:13.5px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 11</span>The Negotiation Table</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Five deals land on your desk. Sign, walk, or push back.</h2>
+    <p class="sub">You are Trade Minister of <b>Meridia</b>. Five negotiations arrive over one term — a tariff swap, a suspicious FTA, an MFN-complicated concession, a mega-regional pact, and a hardball ultimatum from a superpower. For each you can <b>Accept</b> the terms, <b>Reject</b> and walk away, or <b>Counter-offer</b> — counters usually improve the deal, but talks can collapse.</p>
+    <p class="sub">The welfare numbers shown are your economists' estimates, and they already include the subtleties from Chapter 11: trade <i>creation</i> vs. trade <i>diversion</i>, MFN spillovers, and retaliation risk. Your job is to act on expected value, not vibes.</p>
+    <p class="sub">Score = welfare banked vs. a perfectly rational negotiator facing the same luck at the table.</p>
+    <div class="gradebox"><b>How grading works:</b> your grade for this arena is the <b>average of your first two completed attempts</b>. One attempt counts fully on its own; a second averages in and can raise <i>or lower</i> it; later runs are practice. Unplayed arenas count as 0 toward the arena part of your course grade. Closing mid-game records nothing.</div>
+    <button class="btn" id="startBtn">Open the first folder</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="deal" id="dealBox"></div>
+    <div class="stats">
+      <div class="stat"><b id="sRound">1 / 5</b><span>negotiation</span></div>
+      <div class="stat"><b id="sW">0</b><span>welfare banked</span></div>
+    </div>
+    <h3>Your move</h3>
+    <div id="choices"></div>
+    <button class="btn" id="goBtn" disabled>Commit</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next negotiation</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Term complete</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'negotiation';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('score,played_at').eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        var rows=(cr.data||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+        Me.used=rows.length;
+        var pc=function(x){ return Math.round(Number(x)*100)+'%'; };
+        var b=$('attemptBanner'); b.classList.remove('hidden');
+        if(Me.used===0){
+          b.textContent='Graded attempt 1 of 2. One attempt is enough — this arena’s grade is the AVERAGE of your first two completed attempts, so a second run can raise or lower it. Closing mid-game records nothing.';
+        } else if(Me.used===1){
+          b.textContent='Graded attempt 2 of 2. Your first attempt scored '+pc(rows[0].score)+'. This run will be AVERAGED with it — beat '+pc(rows[0].score)+' and your arena grade rises; score below it and your grade falls.';
+        } else {
+          b.textContent='Practice mode — your grade is locked at the average of your first two attempts ('+pc(rows[0].score)+' and '+pc(rows[1].score)+' → '+pc((Number(rows[0].score)+Number(rows[1].score))/2)+'). Extra runs are saved as history only.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   Each deal: accept payoff (certain), reject payoff (usually 0, sometimes risky),
+   counter = {p, win, lose}. One random draw per deal, shared with the expert.  */
+var DEALS = [
+  { name:'The Tariff Swap', partner:'Valtania (large, efficient)',
+    d:'Mutual 50% tariff cuts on machinery and farm goods. Your economists score the access gain at +8. A counter-offer might squeeze out deeper cuts (+12) — but Valtania’s patience is thin.',
+    accept:8, reject:0, counter:{p:0.6, win:12, lose:0, winTxt:'They accepted deeper cuts.', loseTxt:'Talks collapsed — no deal.'} },
+  { name:'The Friendly FTA', partner:'Borduria (neighbor, high-cost)',
+    d:'A preferential FTA. It LOOKS like +6 in market access — but Bordurian imports would displace cheaper world suppliers you currently tax at MFN rates: classic TRADE DIVERSION. Net welfare estimate: −4. A counter adding strict rules-of-origin and keeping MFN rates on third parties might salvage +1.',
+    accept:-4, reject:0, counter:{p:0.6, win:1, lose:0, winTxt:'They took the origin-rules version.', loseTxt:'They walked — no deal (which is fine).'} },
+  { name:'The MFN Spillover', partner:'Cascadia (mid-size)',
+    d:'Cascadia wants your services market opened. Access to theirs is worth +10 — but under MFN, the concession extends to EVERY WTO member: total cost −6, net +4. A counter carving a narrower concession could net +7.',
+    accept:4, reject:0, counter:{p:0.6, win:7, lose:0, winTxt:'Narrower carve-out agreed.', loseTxt:'Cascadia gave up — no deal.'} },
+  { name:'The Mega-Regional', partner:'The Meridian Rim Pact (11 countries)',
+    d:'Deep integration: +15 in access and supply-chain certainty, minus −5 to meet labor and environmental standards. Net +10 — the largest deal on your desk. A counter for phase-in flexibility could reach +13, but 11 parliaments make re-opening the text risky.',
+    accept:10, reject:0, counter:{p:0.6, win:13, lose:0, winTxt:'Phase-ins granted.', loseTxt:'Re-opening the text killed it. Ouch.'} },
+  { name:'The Ultimatum', partner:'Grandia (superpower)',
+    d:'“Sign this managed-trade quota or face consequences.” Accepting costs −2. Rejecting risks their tariffs: 70% they bluff (0), 30% they hit you (−5). Countering with a face-saving side-letter: 60% chance of +4, 40% they take offense (−3).',
+    accept:-2, reject:{p:0.7, win:0, lose:-5, winTxt:'They bluffed.', loseTxt:'They hit your exports with tariffs.'},
+    counter:{p:0.6, win:4, lose:-3, winTxt:'Side-letter accepted — you both saved face.', loseTxt:'They took offense and slapped a token tariff.'} }
+];
+function ev(x){ if(typeof x==='number'){ return x; } return x.p*x.win+(1-x.p)*x.lose; }
+function realize(x,draw){ if(typeof x==='number'){ return {v:x, txt:null}; } return draw<x.p ? {v:x.win, txt:x.winTxt} : {v:x.lose, txt:x.loseTxt}; }
+
+var G={ r:0, W:0, expert:0, worst:0, sel:null, hist:[], draws:[] };
+DEALS.forEach(function(){ G.draws.push(Math.random()); });
+
+$('startBtn').addEventListener('click', function(){ $('intro').classList.add('hidden'); $('play').classList.remove('hidden'); deal(); });
+function deal(){
+  var D=DEALS[G.r]; G.sel=null;
+  $('dealBox').innerHTML='<b>Negotiation '+(G.r+1)+': '+D.name+'</b> — with '+D.partner+'.<br>'+D.d;
+  $('sRound').textContent=(G.r+1)+' / 5';
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('goBtn').classList.remove('hidden'); $('goBtn').disabled=true;
+  var h='';
+  h+='<button class="choice" data-a="accept">Accept<small>Certain '+(D.accept>=0?'+':'')+D.accept+'</small></button>';
+  h+='<button class="choice" data-a="reject">Reject / walk away<small>'+(typeof D.reject==='number'?('Certain '+D.reject):('Risky: '+Math.round(D.reject.p*100)+'% → '+D.reject.win+', else '+D.reject.lose))+'</small></button>';
+  h+='<button class="choice" data-a="counter">Counter-offer<small>'+Math.round(D.counter.p*100)+'% → '+(D.counter.win>=0?'+':'')+D.counter.win+', else '+D.counter.lose+'</small></button>';
+  $('choices').innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(b){
+    b.addEventListener('click',function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(x){x.classList.remove('sel');});
+      b.classList.add('sel'); G.sel=b.getAttribute('data-a'); $('goBtn').disabled=false;
+    });
+  });
+}
+$('goBtn').addEventListener('click',function(){
+  var D=DEALS[G.r], draw=G.draws[G.r];
+  var options={ accept:D.accept, reject:D.reject, counter:D.counter };
+  var res=realize(options[G.sel],draw);
+  // expert: max EV action, realized with same draw
+  var bestA='accept', bestEv=ev(D.accept);
+  ['reject','counter'].forEach(function(a){ if(ev(options[a])>bestEv){ bestEv=ev(options[a]); bestA=a; } });
+  var exRes=realize(options[bestA],draw);
+  // worst realized action for the floor
+  var worst=Math.min(realize(options.accept,draw).v, realize(options.reject,draw).v, realize(options.counter,draw).v);
+  G.W+=res.v; G.expert+=exRes.v; G.worst+=worst;
+  G.hist.push({ deal:D.name, action:G.sel, got:res.v, expertAction:bestA, expertGot:exRes.v });
+  var fb='<b>You chose to '+G.sel+'.</b> '+(res.txt?res.txt+' ':'')+'Welfare: <b class="'+(res.v>=0?'good':'bad')+'">'+(res.v>=0?'+':'')+res.v+'</b>. ';
+  fb+='The EV-maximizing move was <b>'+bestA+'</b> (EV '+bestEv.toFixed(1)+').<br>';
+  if(G.r===1){ fb+='<i>Chapter 11 lesson: a preferential deal that shifts your imports from the world’s cheapest supplier to a pricier partner LOOKS like liberalization but is trade diversion — Viner’s trap. Walking away (or fixing the rules) beats signing.</i>'; }
+  if(G.r===2){ fb+='<i>MFN means one concession prices in the whole membership — which is exactly why WTO rounds move slowly and carve-outs are gold.</i>'; }
+  if(G.r===4){ fb+='<i>Asymmetric power changes the game: for small countries, the value of WTO dispute rules is precisely that they turn ultimatums into rule-bound cases.</i>'; }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('goBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.r<DEALS.length-1?'Next negotiation':'Final tally';
+  $('sW').textContent=(G.W>=0?'+':'')+G.W;
+});
+$('nextBtn').addEventListener('click',function(){
+  G.r++;
+  if(G.r<DEALS.length){ deal(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var score=(G.W-G.worst)/(G.expert-G.worst);
+  score=Math.max(0,Math.min(1,score));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent='You banked '+(G.W>=0?'+':'')+G.W+' vs the rational negotiator’s '+(G.expert>=0?'+':'')+G.expert+' on the same table luck. '+
+    (score>0.85?'Sign the plaque: Minister of the Year.':score>0.55?'Respectable diplomacy — re-check the deals where you ignored the EV line on screen.':'You signed the wrong deals. Re-read §11.2 on trade creation vs diversion before attempt two.');
+  var rec='<table><thead><tr><th>Negotiation</th><th>Your move</th><th>Result</th><th>Expert move</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.deal+'</td><td>'+h.action+'</td><td class="'+(h.got>=0?'good':'bad')+'">'+(h.got>=0?'+':'')+h.got+'</td><td>'+h.expertAction+' → '+(h.expertGot>=0?'+':'')+h.expertGot+'</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.85?'mastered':score>0.55?'proficient':score>0.25?'developing':'beginning';
+  saveResult(score,outcome,{ history:G.hist, draws:G.draws, version:'p4-1' });
+}
+boot();
+</script>
+</body>
+</html>
