@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms-of-Trade Simulator — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .choice{display:block;width:100%;text-align:left;background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px 14px;margin:8px 0;cursor:pointer;color:#c9d2e8;font-size:13.5px;}
+  .choice:hover{border-color:#7c6df2;} .choice.sel{border-color:#7c6df2;background:rgba(124,109,242,.1);}
+  .choice small{display:block;color:#8b96b3;margin-top:2px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+  #totChart{width:100%;height:120px;background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;margin:8px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 5</span>Terms-of-Trade Simulator</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>You are large enough to move world prices. That cuts both ways.</h2>
+    <p class="sub">You govern <b>Grandia</b>, a large country exporting <b>Ore</b> and importing <b>Consumer Goods</b>. Because Grandia supplies a big share of the world ore market, everything you do moves the world price of ore — your <b>terms of trade</b> (price of exports ÷ price of imports).</p>
+    <p class="sub">Each of 6 years, pick one policy: expand the ore sector (more volume, but the extra world supply <i>pushes ore prices down</i> — grow too hard and you get <b>immiserizing growth</b>), build import-competing industry (import less → world price of imports falls in your favor), set a tariff (optimal-tariff logic: some improvement in TOT, but domestic distortion, and high tariffs risk retaliation), or invest in consumption.</p>
+    <p class="sub">Score = your cumulative national welfare relative to an expert policy sequence run on the same random events. Watch the TOT chart — it is the story of the game.</p>
+    <button class="btn" id="startBtn">Take office</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="stats">
+      <div class="stat"><b id="sYear">1 / 6</b><span>year</span></div>
+      <div class="stat"><b id="sTot">1.00</b><span>terms of trade</span></div>
+      <div class="stat"><b id="sCap">100</b><span>ore capacity</span></div>
+      <div class="stat"><b id="sW">0</b><span>cumulative welfare</span></div>
+    </div>
+    <canvas id="totChart" width="860" height="120"></canvas>
+    <h2 id="evTitle"></h2>
+    <p class="sub" id="evDesc"></p>
+    <div id="choices"></div>
+    <button class="btn" id="goBtn" disabled>Enact policy</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next year</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Term over</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'terms-of-trade';
+var MAX_GRADED = 2;
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('id',{count:'exact',head:true}).eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        Me.used=cr.count||0;
+        $('attemptBanner').classList.remove('hidden');
+        $('attemptBanner').textContent = Me.used>=MAX_GRADED
+          ? 'Practice mode: both graded attempts used. Your grade keeps the average of your first two.'
+          : 'Graded attempt '+(Me.used+1)+' of '+MAX_GRADED+'.';
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   State: tot (terms of trade), cap (ore capacity), tariffOn, retaliated.
+   Welfare per year = cap * tot^0.6  (export earnings deflated by import prices)
+                      + tariff TOT gain − tariff distortion − retaliation cost.
+   Policies:
+     expand   : cap +18, but world ore supply up → tot −8% (−14% in glut years)
+     import   : tot +5% (import demand falls → import prices fall), cap +0
+     tariff10 : one-year TOT +4%, distortion −2 welfare
+     tariff25 : one-year TOT +9%, distortion −6 welfare, 50% retaliation risk
+                (retaliation: tot −12% for the REST of the game)
+     consume  : +10 welfare now, nothing else
+   Random events per year (seeded so the expert benchmark faces the SAME world):
+     glut (extra supply abroad, expand hurts more), boom (tot +6%), calm.     */
+var EV = [
+  { t:'Year 1 — Calm markets', kind:'calm', d:'World markets are steady. A good year to set your strategy.' },
+  { t:'Year 2 — Rival discovers ore', kind:'glut', d:'A rival country brings a huge ore field online. Extra world supply punishes further expansion this year.' },
+  { t:'Year 3 — Consumer-goods boom', kind:'boom', d:'Import prices are soft; your terms of trade naturally improve ~6% this year.' },
+  { t:'Year 4 — Trade tensions', kind:'calm', d:'Partners are watching your tariff policy closely. Aggressive moves may trigger retaliation.' },
+  { t:'Year 5 — Glut deepens', kind:'glut', d:'World ore inventories are overflowing. Expansion is nearly self-defeating.' },
+  { t:'Year 6 — Final year', kind:'calm', d:'Last budget. Lock in welfare.' }
+];
+var POL = {
+  expand:{ label:'Expand the ore sector', small:'+18 capacity, but your extra supply lowers world ore prices (TOT −8%, −14% in glut years)' },
+  import_sub:{ label:'Build import-competing industry', small:'Buy less from the world: import prices ease, TOT +5%' },
+  tariff10:{ label:'Moderate tariff (10%)', small:'Optimal-tariff logic: TOT +4% this year, small distortion (−2 welfare)' },
+  tariff25:{ label:'Aggressive tariff (25%)', small:'TOT +9% this year, −6 welfare distortion, 50% chance of retaliation (TOT −12% permanently)' },
+  consume:{ label:'Dividend year', small:'+10 welfare now; no investment' }
+};
+function mulberry(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+var SEED = Math.floor(Math.random()*1e9);
+
+function simulate(policyFn, record){
+  var rnd = mulberry(SEED);
+  var st = { tot:1.0, cap:100, W:0, retaliated:false, hist:[] };
+  for(var y=0;y<EV.length;y++){
+    var ev=EV[y];
+    if(ev.kind==='boom'){ st.tot*=1.06; }
+    var pol = policyFn(y, ev, st);
+    var totBoost=1, extraW=0, note='';
+    if(pol==='expand'){ st.cap+=18; st.tot*= (ev.kind==='glut'?0.86:0.92); note='Capacity up; world ore price down.'; }
+    else if(pol==='import_sub'){ st.tot*=1.05; note='Import demand down; TOT improved.'; }
+    else if(pol==='tariff10'){ totBoost=1.04; extraW=-2; note='Small optimal-tariff gain.'; }
+    else if(pol==='tariff25'){
+      totBoost=1.09; extraW=-6;
+      if(!st.retaliated && rnd()<0.5){ st.retaliated=true; st.tot*=0.88; note='RETALIATION: partners raised tariffs on your ore. TOT permanently damaged.'; }
+      else { note='Big TOT grab — you got away with it this year.'; }
+    }
+    else { extraW=10; note='Dividend paid.'; }
+    var wYear = st.cap*Math.pow(st.tot*totBoost,0.6)/10 + extraW;
+    st.W += wYear;
+    st.hist.push({ y:y+1, pol:pol, tot:st.tot, w:wYear, note:note });
+    if(record){ record(y, pol, st, wYear, note); }
+  }
+  return st;
+}
+// Expert benchmark: import-sub in glut years, moderate tariff in calm years,
+// expand only year 1, dividend last year. Runs on the SAME seed.
+function expertPolicy(y, ev, st){
+  if(y===0) return 'expand';
+  if(y===EV.length-1) return 'consume';
+  if(ev.kind==='glut') return 'import_sub';
+  return 'tariff10';
+}
+var EXPERT = null;
+
+/* ---------------- interactive play ---------------- */
+var G={ y:0, st:{tot:1.0,cap:100,W:0,retaliated:false,hist:[]}, rnd:mulberry(SEED), sel:null, totPath:[1.0] };
+$('startBtn').addEventListener('click',function(){
+  EXPERT = simulate(expertPolicy);
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  year();
+});
+function year(){
+  var ev=EV[G.y]; G.sel=null;
+  if(ev.kind==='boom'){ G.st.tot*=1.06; G.totPath[G.totPath.length-1]=G.st.tot; }
+  $('sYear').textContent=(G.y+1)+' / 6'; $('sTot').textContent=G.st.tot.toFixed(2);
+  $('sCap').textContent=G.st.cap; $('sW').textContent=G.st.W.toFixed(0);
+  $('evTitle').textContent=ev.t; $('evDesc').textContent=ev.d;
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('goBtn').classList.remove('hidden'); $('goBtn').disabled=true;
+  var h='';
+  Object.keys(POL).forEach(function(k){
+    h+='<button class="choice" data-p="'+k+'">'+POL[k].label+'<small>'+POL[k].small+'</small></button>';
+  });
+  $('choices').innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(b){
+    b.addEventListener('click',function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(x){x.classList.remove('sel');});
+      b.classList.add('sel'); G.sel=b.getAttribute('data-p'); $('goBtn').disabled=false;
+    });
+  });
+  drawTot();
+}
+$('goBtn').addEventListener('click',function(){
+  var ev=EV[G.y], st=G.st, pol=G.sel;
+  var totBoost=1, extraW=0, note='';
+  if(pol==='expand'){ st.cap+=18; st.tot*=(ev.kind==='glut'?0.86:0.92); note='Your extra supply pushed world ore prices down '+(ev.kind==='glut'?'hard (glut year).':'somewhat.'); }
+  else if(pol==='import_sub'){ st.tot*=1.05; note='Importing less eased import prices — TOT up 5%.'; }
+  else if(pol==='tariff10'){ totBoost=1.04; extraW=-2; note='Moderate tariff: TOT +4% this year at a small domestic cost. This is the optimal-tariff idea for a large country.'; }
+  else if(pol==='tariff25'){
+    totBoost=1.09; extraW=-6;
+    if(!st.retaliated && G.rnd()<0.5){ st.retaliated=true; st.tot*=0.88; note='<span class="bad">RETALIATION!</span> Partners slapped tariffs on your ore — TOT permanently down 12%. Large-country tariffs invite this.'; }
+    else{ note='Aggressive tariff paid off this year — no retaliation (yet). You were lucky.'; }
+  }
+  else { extraW=10; note='You paid a dividend. Sometimes consuming the gains IS the right call.'; }
+  var wYear = st.cap*Math.pow(st.tot*totBoost,0.6)/10 + extraW;
+  st.W+=wYear;
+  st.hist.push({ y:G.y+1, pol:pol, tot:st.tot, w:wYear });
+  G.totPath.push(st.tot);
+  var fb='<b>'+POL[pol].label+':</b> '+note+'<br>Welfare this year: <b>'+wYear.toFixed(1)+'</b>. Terms of trade now '+st.tot.toFixed(2)+'.';
+  if(pol==='expand' && st.hist.filter(function(h){return h.pol==='expand';}).length>=2 && st.tot<0.85){
+    fb+='<br><span class="warn">Notice: capacity keeps rising but income barely moves — this is immiserizing growth (§5.4): export-biased growth that wrecks your own price.</span>';
+  }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('goBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.y<EV.length-1?'Next year':'See final score';
+  $('sTot').textContent=st.tot.toFixed(2); $('sCap').textContent=st.cap; $('sW').textContent=st.W.toFixed(0);
+  drawTot();
+});
+$('nextBtn').addEventListener('click',function(){
+  G.y++;
+  if(G.y<EV.length){ year(); return; }
+  finish();
+});
+function drawTot(){
+  var c=$('totChart'), ctx=c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.strokeStyle='rgba(255,255,255,.15)'; ctx.beginPath(); ctx.moveTo(0,c.height/2); ctx.lineTo(c.width,c.height/2); ctx.stroke();
+  ctx.fillStyle='#8b96b3'; ctx.font='11px sans-serif'; ctx.fillText('TOT = 1.0',6,c.height/2-5);
+  ctx.strokeStyle='#7c6df2'; ctx.lineWidth=2; ctx.beginPath();
+  var n=Math.max(2,G.totPath.length);
+  G.totPath.forEach(function(v,i){
+    var x=20+(c.width-40)*i/(6), yv=c.height/2-(v-1)*180;
+    yv=Math.max(8,Math.min(c.height-8,yv));
+    if(i===0){ ctx.moveTo(x,yv);} else { ctx.lineTo(x,yv);}
+    ctx.fillStyle='#7c6df2'; ctx.fillRect(x-2,yv-2,4,4);
+  });
+  ctx.stroke();
+}
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  // Baseline = all-dividend passive play on same seed; expert = benchmark.
+  var passive = simulate(function(){ return 'consume'; });
+  var score = (G.st.W - passive.W) / (EXPERT.W - passive.W);
+  score = Math.max(0, Math.min(1, score));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent='Your welfare: '+G.st.W.toFixed(0)+' · passive baseline: '+passive.W.toFixed(0)+' · expert play on the same world: '+EXPERT.W.toFixed(0)+'.'+
+    (score>0.85?' Masterful macro-trade management.':score>0.55?' Solid — compare your years 2 and 5 with the expert line: glut years reward import-competing investment.':' The world price kept getting away from you. Re-read §5.3–5.4 and try attempt two.');
+  var rec='<table><thead><tr><th>Year</th><th>Your policy</th><th>TOT after</th><th>Welfare</th></tr></thead><tbody>';
+  G.st.hist.forEach(function(h){ rec+='<tr><td>'+h.y+'</td><td>'+POL[h.pol].label+'</td><td>'+h.tot.toFixed(2)+'</td><td>'+h.w.toFixed(1)+'</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.85?'mastered':score>0.55?'proficient':score>0.25?'developing':'beginning';
+  saveResult(score,outcome,{ seed:SEED, welfare:Math.round(G.st.W), expert:Math.round(EXPERT.W), retaliated:G.st.retaliated, history:G.st.hist, version:'p2-1' });
+}
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comparative Advantage Workshop — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{ --bg:#0b0e17; --panel:#131829; --panel2:#0f1420; --border:rgba(255,255,255,.09);
+    --text:#c9d2e8; --bright:#f0f4ff; --muted:#8b96b3; --subtle:#5d6783;
+    --violet:#7c6df2; --green:#2ec27e; --amber:#e5a54b; --rose:#e5484d; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid var(--border);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:#c9d2e8;font-weight:500;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;} @media(max-width:640px){.grid2{grid-template-columns:1fr;}}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+  input[type=range]{width:100%;accent-color:#7c6df2;}
+  .stat{background:#0f1420;border:1px solid var(--border);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid var(--border);background:#0f1420;}
+  .hidden{display:none;}
+  .rounddots{display:flex;gap:6px;} .rounddots i{width:9px;height:9px;border-radius:50%;background:#2a3050;} .rounddots i.on{background:#7c6df2;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapters 1–2</span>Comparative Advantage Workshop</h1>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div class="rounddots" id="dots"><i></i><i></i><i></i></div>
+      <div class="pill" id="whoPill">checking sign-in…</div>
+    </div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <!-- INTRO -->
+  <div class="card" id="intro">
+    <h2>Run a two-good economy — first alone, then with trade</h2>
+    <p class="sub">You manage <b>Home</b>, which makes <b>Cloth</b> and <b>Wheat</b> with 100 workers. Each round has two phases:</p>
+    <p class="sub"><b>Phase 1 — Autarky:</b> no trade. Allocate workers between the goods; your citizens consume exactly what you produce. Their happiness is highest with a <i>balanced</i> basket (utility = √(Cloth × Wheat)).</p>
+    <p class="sub"><b>Phase 2 — Open to trade:</b> a world market appears with a fixed world price. Re-allocate workers (hint: think about what Home is <i>relatively</i> better at) and export one good for the other.</p>
+    <p class="sub">Your score is the share of the possible <b>gains from trade</b> you actually capture, averaged over 3 rounds with different technologies. Doing no better than autarky scores 0 for the round — full specialization in the right good plus balanced trading scores 100%.</p>
+    <button class="btn" id="startBtn">Start round 1</button>
+  </div>
+
+  <!-- PLAY -->
+  <div class="card hidden" id="play">
+    <h2 id="phaseTitle"></h2>
+    <p class="sub" id="phaseSub"></p>
+    <table id="techTbl">
+      <thead><tr><th></th><th>Workers per unit of Cloth</th><th>Workers per unit of Wheat</th></tr></thead>
+      <tbody>
+        <tr><td><b>Home (you)</b></td><td id="tHC"></td><td id="tHW"></td></tr>
+        <tr><td>Foreign</td><td id="tFC"></td><td id="tFW"></td></tr>
+      </tbody>
+    </table>
+    <div id="worldPriceLine" class="sub hidden"></div>
+    <h3 style="margin-top:12px;">Allocate your 100 workers</h3>
+    <input type="range" id="alloc" min="0" max="100" value="50" step="1">
+    <div class="grid2" style="margin-top:4px;">
+      <div class="stat"><b id="qC">–</b><span>cloth produced</span></div>
+      <div class="stat"><b id="qW">–</b><span>wheat produced</span></div>
+    </div>
+    <div id="tradeBlock" class="hidden">
+      <h3 style="margin-top:12px;">Trade with the world <span style="color:#8b96b3;font-weight:400;" id="tradeHint"></span></h3>
+      <input type="range" id="tradeAmt" min="-100" max="100" value="0" step="1">
+      <p class="sub" id="tradeDesc" style="margin-top:4px;"></p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="cC">–</b><span>cloth consumed</span></div>
+      <div class="stat"><b id="cW">–</b><span>wheat consumed</span></div>
+      <div class="stat"><b id="uNow">–</b><span>happiness (utility)</span></div>
+    </div>
+    <button class="btn" id="lockBtn">Lock in</button>
+    <div class="feedback hidden" id="roundFb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Continue</button>
+  </div>
+
+  <!-- FINISH -->
+  <div class="card hidden" id="done">
+    <h2>Workshop complete</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="roundRecap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'ricardian';
+var MAX_GRADED = 2;
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+/* ---------- session / course / attempts ---------- */
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s = r.data ? r.data.session : null;
+    if(!s || !s.user){ $('whoPill').textContent = 'Guest — score will not be saved'; return; }
+    Me.user = s.user;
+    $('whoPill').textContent = s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id', s.user.id).eq('status','active').then(function(er){
+      var rows = er.data || [];
+      var real = rows.filter(function(x){ return x.it_courses && x.it_courses.owner_id !== s.user.id; });
+      Me.courseId = real.length ? real[0].course_id : (rows.length ? rows[0].course_id : null);
+      var q = sb.from('it_arena_results').select('id',{count:'exact',head:true}).eq('student_id', s.user.id).eq('arena_slug', SLUG);
+      if(Me.courseId){ q = q.eq('course_id', Me.courseId); }
+      q.then(function(cr){
+        Me.used = cr.count || 0;
+        if(Me.used >= MAX_GRADED){
+          $('attemptBanner').classList.remove('hidden');
+          $('attemptBanner').textContent = 'Practice mode: you have used your ' + MAX_GRADED + ' graded attempts. This session is for learning only — your grade uses the average of your first two.';
+        } else {
+          $('attemptBanner').classList.remove('hidden');
+          $('attemptBanner').textContent = 'Graded attempt ' + (Me.used+1) + ' of ' + MAX_GRADED + '. Your grade for this arena is the average of your first two attempts.';
+        }
+      });
+    });
+  });
+}
+function saveResult(score, outcome, details){
+  if(!Me.user){ $('saveNote').textContent = 'Not signed in — this score was not saved. Sign in on the course home page and launch the arena from there.'; return; }
+  sb.from('it_arena_results').insert({
+    student_id: Me.user.id, course_id: Me.courseId, arena_slug: SLUG,
+    outcome: outcome, score: Math.round(score*1000)/1000, details: details
+  }).then(function(r){
+    $('saveNote').textContent = r.error ? ('⚠ Could not save your score: ' + r.error.message + '. Tell your instructor.')
+      : '✓ Recorded to your grade' + (Me.used >= MAX_GRADED ? ' history (practice — does not change your grade).' : '.');
+  });
+}
+
+/* ---------- game model ---------- */
+// Round params: unit labor requirements. Home always has comparative advantage
+// in ONE good (varies by round); Foreign is sometimes absolutely better at both
+// (rounds 2, 3) to teach that absolute advantage is not what matters.
+var ROUNDS = [
+  { aHC:2, aHW:4, aFC:6, aFW:3 },   // Home better at both; CA in cloth
+  { aHC:5, aHW:4, aFC:2, aFW:1 },   // Foreign absolutely better at both; Home still CA in cloth
+  { aHC:6, aHW:2, aFC:2, aFW:2 }    // Home CA in wheat this time
+];
+var L = 100;
+var G = { r:0, phase:'aut', results:[], autU:{}, };
+
+function homeCA(p){ // 'cloth' or 'wheat'
+  return (p.aHC/p.aHW) < (p.aFC/p.aFW) ? 'cloth' : 'wheat';
+}
+function worldPrice(p){ // wheat per unit of cloth, strictly between the two autarky ratios
+  var h = p.aHC/p.aHW, f = p.aFC/p.aFW;
+  return Math.round(((h+f)/2)*100)/100;
+}
+function U(cc,cw){ return (cc>0&&cw>0) ? Math.sqrt(cc*cw) : 0; }
+function autarkyMaxU(p){ return U(L/(2*p.aHC), L/(2*p.aHW)); }
+function tradeMaxU(p){
+  var pw = worldPrice(p);
+  var vCloth = (L/p.aHC)*pw;   // full spec in cloth, value in wheat units
+  var vWheat = L/p.aHW;        // full spec in wheat
+  var V = Math.max(vCloth, vWheat);
+  return U(V/(2*pw), V/2);
+}
+
+function startRound(){
+  var p = ROUNDS[G.r];
+  G.phase='aut';
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  $('roundFb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('lockBtn').classList.remove('hidden'); $('lockBtn').disabled=false;
+  $('tradeBlock').classList.add('hidden'); $('worldPriceLine').classList.add('hidden');
+  var dots=$('dots').children; for(var i=0;i<3;i++){ dots[i].className = i<=G.r?'on':''; }
+  $('phaseTitle').textContent = 'Round ' + (G.r+1) + ' · Phase 1 — Autarky';
+  $('phaseSub').textContent = 'No trade yet. Your citizens consume exactly what you produce. Find the allocation that makes them happiest.';
+  $('tHC').textContent = p.aHC; $('tHW').textContent = p.aHW;
+  $('tFC').textContent = p.aFC; $('tFW').textContent = p.aFW;
+  $('alloc').value = 50; $('tradeAmt').value = 0;
+  refresh();
+}
+function current(){
+  var p = ROUNDS[G.r];
+  var x = Number($('alloc').value);
+  var qc = x/p.aHC, qw = (L-x)/p.aHW;
+  var cc=qc, cw=qw, note='';
+  if(G.phase==='trade'){
+    var pw = worldPrice(p);
+    var t = Number($('tradeAmt').value)/100;  // -1..1 of feasible trade
+    if(t>=0){ var ex = qc*t; cc = qc-ex; cw = qw + ex*pw; note = t===0?'No trade.':'Exporting ' + ex.toFixed(1) + ' cloth for ' + (ex*pw).toFixed(1) + ' wheat.'; }
+    else { var exw = qw*(-t); cw = qw-exw; cc = qc + exw/pw; note = 'Exporting ' + exw.toFixed(1) + ' wheat for ' + (exw/pw).toFixed(1) + ' cloth.'; }
+  }
+  return { p:p, qc:qc, qw:qw, cc:cc, cw:cw, u:U(cc,cw), note:note };
+}
+function refresh(){
+  var c = current();
+  $('qC').textContent = c.qc.toFixed(1); $('qW').textContent = c.qw.toFixed(1);
+  $('cC').textContent = c.cc.toFixed(1); $('cW').textContent = c.cw.toFixed(1);
+  $('uNow').textContent = c.u.toFixed(1);
+  if(G.phase==='trade'){ $('tradeDesc').textContent = c.note; }
+}
+$('alloc').addEventListener('input', refresh);
+$('tradeAmt').addEventListener('input', refresh);
+
+$('startBtn').addEventListener('click', startRound);
+$('lockBtn').addEventListener('click', function(){
+  var p = ROUNDS[G.r], c = current();
+  if(G.phase==='aut'){
+    G.autU = { u:c.u, max:autarkyMaxU(p) };
+    G.phase='trade';
+    var pw = worldPrice(p), ca = homeCA(p);
+    $('phaseTitle').textContent = 'Round ' + (G.r+1) + ' · Phase 2 — Open to trade';
+    $('phaseSub').textContent = 'A world market opens. You can now sell either good at the world price and buy the other. Re-allocate workers, then trade.';
+    $('worldPriceLine').classList.remove('hidden');
+    $('worldPriceLine').innerHTML = '<b>World price:</b> 1 cloth trades for <b>' + pw + '</b> wheat.';
+    $('tradeBlock').classList.remove('hidden');
+    $('tradeHint').textContent = '(slide right to export cloth, left to export wheat)';
+    refresh();
+    return;
+  }
+  // grade the round
+  var uAut = autarkyMaxU(p), uMax = tradeMaxU(p);
+  var gain = (c.u - uAut) / (uMax - uAut);
+  var rScore = Math.max(0, Math.min(1, gain));
+  var ca = homeCA(p);
+  var specGood = (Number($('alloc').value) >= 50) ? 'cloth' : 'wheat';
+  G.results.push({ round:G.r+1, score:rScore, u:c.u, uAut:uAut, uMax:uMax, ca:ca });
+  var fb = '<b>Round score: ' + Math.round(rScore*100) + '%</b><br>';
+  fb += 'Best possible autarky happiness was <b>' + uAut.toFixed(1) + '</b>; with ideal specialization and trade it is <b>' + uMax.toFixed(1) + '</b>. You reached <b>' + c.u.toFixed(1) + '</b>.<br>';
+  fb += 'Home’s comparative advantage here is <b>' + ca + '</b> (compare opportunity costs: ' +
+        (p.aHC/p.aHW).toFixed(2) + ' wheat per cloth at Home vs ' + (p.aFC/p.aFW).toFixed(2) + ' in Foreign). ';
+  if(rScore > 0.85){ fb += '<span class="good">You specialized in the right good and traded to a balanced basket — textbook Ricardo.</span>'; }
+  else if(rScore > 0.4){ fb += '<span class="warn">Partial credit: you gained from trade but left some gains on the table — push allocation further toward ' + ca + ' and trade closer to a 50/50 spending split.</span>'; }
+  else { fb += '<span class="bad">You did no better than autarky. Specialize in ' + ca + ' and export it.</span>'; }
+  if(G.r===1 && rScore>0.4){ fb += '<br><i>Note: Foreign was better at making BOTH goods this round — and trade still made you richer. Absolute advantage is irrelevant; relative cost is everything.</i>'; }
+  $('roundFb').innerHTML = fb; $('roundFb').classList.remove('hidden');
+  $('lockBtn').classList.add('hidden');
+  $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent = (G.r < ROUNDS.length-1) ? 'Next round' : 'See final score';
+});
+$('nextBtn').addEventListener('click', function(){
+  G.r++;
+  if(G.r < ROUNDS.length){ startRound(); return; }
+  finish();
+});
+
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var avg = G.results.reduce(function(s,r){ return s+r.score; },0)/G.results.length;
+  $('finalPct').textContent = Math.round(avg*100) + '%';
+  var msg = avg>0.85 ? 'Outstanding — you captured nearly all gains from trade.' :
+            avg>0.6 ? 'Solid. Review opportunity cost: specialize harder in the comparative-advantage good.' :
+            avg>0.3 ? 'You gained from trade sometimes. Re-read §2.3 on relative prices and try again.' :
+                      'Trade barely helped you this time — revisit Chapter 2 and use your second attempt.';
+  $('finalMsg').textContent = msg;
+  var rec = '<table><thead><tr><th>Round</th><th>Your CA good</th><th>Score</th></tr></thead><tbody>';
+  G.results.forEach(function(r){ rec += '<tr><td>'+r.round+'</td><td>'+r.ca+'</td><td>'+Math.round(r.score*100)+'%</td></tr>'; });
+  rec += '</tbody></table>';
+  $('roundRecap').innerHTML = rec;
+  var outcome = avg>0.85?'mastered':avg>0.6?'proficient':avg>0.3?'developing':'beginning';
+  saveResult(avg, outcome, { rounds:G.results, version:'p2-1' });
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distribution Battle — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .choice{display:block;width:100%;text-align:left;background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px 14px;margin:8px 0;cursor:pointer;color:#c9d2e8;font-size:13.5px;}
+  .choice:hover{border-color:#7c6df2;} .choice.sel{border-color:#7c6df2;background:rgba(124,109,242,.1);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  .role{border:1px solid #7c6df2;border-radius:10px;padding:12px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:13.5px;}
+  input[type=range]{width:100%;accent-color:#7c6df2;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 3</span>Distribution Battle</h1>
+    <div class="pill" id="whoPill">checking sign-in…</div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Trade creates winners and losers. Which will you be?</h2>
+    <p class="sub">The economy of <b>Aldoria</b> has two industries: <b>Manufactures</b> (uses capital + labor) and <b>Food</b> (uses land + labor). You will be randomly cast as a <b>capitalist</b>, a <b>landowner</b>, or a <b>worker</b>. Capital and land are stuck in their industries; only workers can move between them.</p>
+    <p class="sub">Over 5 rounds, world trade shocks hit and the parliament votes on trade policy. Each round you choose a position and may spend limited political capital to swing the vote. Policy changes goods prices — and the specific-factors model decides what happens to <i>your</i> real income.</p>
+    <p class="sub">Score = your final real income relative to the best you could have achieved in your role. Choosing what's good for <i>the country</i> is not always what's good for <i>you</i> — noticing that tension is the point of Chapter 3.</p>
+    <button class="btn" id="startBtn">Draw my role</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="role" id="roleBox"></div>
+    <div class="stats">
+      <div class="stat"><b id="sIncome">100</b><span>your real income</span></div>
+      <div class="stat"><b id="sPC">6</b><span>political capital</span></div>
+      <div class="stat"><b id="sRound">1 / 5</b><span>round</span></div>
+      <div class="stat"><b id="sPm">1.00</b><span>rel. price of manufactures</span></div>
+    </div>
+    <h2 id="evTitle"></h2>
+    <p class="sub" id="evDesc"></p>
+    <h3>Your position on the vote</h3>
+    <div id="choices"></div>
+    <h3 style="margin-top:8px;">Spend political capital to push the vote <span style="color:#8b96b3;font-weight:400;">(each point ≈ +8% chance your side wins)</span></h3>
+    <input type="range" id="lobby" min="0" max="3" step="1" value="0">
+    <p class="sub" id="lobbyLine">Spend 0 of your capital</p>
+    <button class="btn" id="voteBtn" disabled>Cast vote</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Next round</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Battle over</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'specific-factors';
+var MAX_GRADED = 2;
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s = r.data ? r.data.session : null;
+    if(!s || !s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses && x.it_courses.owner_id!==s.user.id;});
+      Me.courseId = real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('id',{count:'exact',head:true}).eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        Me.used=cr.count||0;
+        $('attemptBanner').classList.remove('hidden');
+        $('attemptBanner').textContent = Me.used>=MAX_GRADED
+          ? 'Practice mode: both graded attempts used. Your grade keeps the average of your first two.'
+          : 'Graded attempt '+(Me.used+1)+' of '+MAX_GRADED+'.';
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent = r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   Reduced-form specific-factors: relative price of manufactures pm moves with
+   policy. Income elasticities w.r.t. pm (log-approx, per unit change in ln pm):
+     capitalist: +1.6   (magnification: specific factor in M gains more than pm)
+     landowner:  -1.1   (specific factor in F loses when pm rises)
+     worker:      -0.15 (+ ambiguous: wage rises less than pm; basket matters)
+   Worker consumption basket is drawn each game (manufactures share 0.3–0.7),
+   real-wage effect = (0.45 - basketShareM) * dlnpm  → can gain or lose. */
+var ROLES = {
+  capitalist:{ label:'Capitalist', blurb:'You own the machines. Your capital is stuck in Manufactures — you prosper if and only if manufactures fetch a good price.', elas:function(){ return 1.6; } },
+  landowner:{ label:'Landowner', blurb:'You own farmland. Your land is stuck in Food — cheap imported manufactures are great for you; pricey ones are not.', elas:function(){ return -1.1; } },
+  worker:{ label:'Worker', blurb:'You can work in either industry, so your wage tracks the whole economy. Whether trade helps you depends on what you buy.', elas:function(){ return (0.45 - G.basketM) * 1.0; } }
+};
+var EVENTS = [
+  { t:'Cheap foreign manufactures arrive', d:'Container ships offer manufactures 20% below the local price. Parliament votes: allow free imports, or impose a tariff to keep them out?',
+    free:{ dpm:-0.20, label:'Allow free imports (pm falls ~20%)' }, prot:{ dpm:-0.02, label:'Impose a tariff (pm barely moves)' } },
+  { t:'Export boom in food', d:'A drought abroad doubles demand for Aldorian food exports. Vote: allow unrestricted food exports (food price up → RELATIVE price of manufactures falls), or cap exports to keep food cheap at home?',
+    free:{ dpm:-0.15, label:'Allow food exports (pm falls ~15%)' }, prot:{ dpm:0.00, label:'Cap food exports (prices unchanged)' } },
+  { t:'Manufactures subsidy abroad ends', d:'A rival country ends its export subsidy; world manufactures prices jump. Vote: stay open (pm rises ~18%), or cap domestic manufactures prices?',
+    free:{ dpm:0.18, label:'Stay open (pm rises ~18%)' }, prot:{ dpm:0.04, label:'Price controls (pm rises ~4%)' } },
+  { t:'Trade agreement on the table', d:'A comprehensive deal would open both sectors: cheaper manufactures AND better food export access. Net effect: pm falls ~10%. Vote yes or no?',
+    free:{ dpm:-0.10, label:'Ratify the deal (pm falls ~10%)' }, prot:{ dpm:0.00, label:'Reject it (status quo)' } },
+  { t:'Global manufactures shortage', d:'Supply chains snap abroad; world manufactures prices spike. Vote: export freely into the shortage (pm rises ~22%), or ban manufactures exports to hold prices down?',
+    free:{ dpm:0.22, label:'Export freely (pm rises ~22%)' }, prot:{ dpm:0.05, label:'Export ban (pm rises ~5%)' } }
+];
+
+var G = { role:null, basketM:0.5, income:100, pc:6, r:0, pm:1.0, sel:null, hist:[], bestIncome:100 };
+
+$('startBtn').addEventListener('click', function(){
+  var roles = Object.keys(ROLES);
+  G.role = roles[Math.floor(Math.random()*roles.length)];
+  G.basketM = 0.3 + Math.random()*0.4;
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  var R = ROLES[G.role];
+  $('roleBox').innerHTML = '<b>Your role: ' + R.label + '.</b> ' + R.blurb +
+    (G.role==='worker' ? (' This game, manufactures are <b>' + Math.round(G.basketM*100) + '%</b> of your household budget.') : '');
+  round();
+});
+
+function round(){
+  var ev = EVENTS[G.r];
+  G.sel=null;
+  $('sRound').textContent=(G.r+1)+' / 5'; $('sPm').textContent=G.pm.toFixed(2);
+  $('sIncome').textContent=G.income.toFixed(0); $('sPC').textContent=G.pc;
+  $('evTitle').textContent='Round '+(G.r+1)+': '+ev.t;
+  $('evDesc').textContent=ev.d;
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('voteBtn').classList.remove('hidden'); $('voteBtn').disabled=true;
+  $('lobby').value=0; $('lobby').max=Math.min(3,G.pc); $('lobbyLine').textContent='Spend 0 of your capital';
+  var h='';
+  h+='<button class="choice" data-side="free">'+ev.free.label+'</button>';
+  h+='<button class="choice" data-side="prot">'+ev.prot.label+'</button>';
+  $('choices').innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(b){
+    b.addEventListener('click',function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.choice'),function(x){x.classList.remove('sel');});
+      b.classList.add('sel'); G.sel=b.getAttribute('data-side'); $('voteBtn').disabled=false;
+    });
+  });
+}
+$('lobby').addEventListener('input',function(){ $('lobbyLine').textContent='Spend '+$('lobby').value+' of your capital'; });
+
+function incomeEffect(dpm){
+  var e = ROLES[G.role].elas();
+  return e * dpm;   // log-approx: % change in real income
+}
+$('voteBtn').addEventListener('click', function(){
+  var ev=EVENTS[G.r];
+  var spend=Number($('lobby').value); G.pc-=spend;
+  // Parliament: 50% baseline for your side, +8pp per capital point, capped 90%.
+  var pWin=Math.min(0.9, 0.5 + spend*0.08);
+  var win=Math.random()<pWin;
+  var side = win ? G.sel : (G.sel==='free'?'prot':'free');
+  var dpm = ev[side].dpm;
+  var eff = incomeEffect(dpm);
+  var before=G.income;
+  G.income = G.income*(1+eff);
+  G.pm = G.pm*(1+dpm);
+  // best-path tracker: what your income would be if the BEST outcome for your
+  // role had happened every round so far (for the score denominator)
+  var effFree=incomeEffect(ev.free.dpm), effProt=incomeEffect(ev.prot.dpm);
+  G.bestIncome = G.bestIncome*(1+Math.max(effFree,effProt));
+  G.hist.push({ round:G.r+1, side:side, won:win, dIncome:eff });
+  var fb='<b>'+(win?'Your side won the vote.':'Your side lost the vote.')+'</b> Policy: '+ev[side].label+'.<br>';
+  fb+='Relative price of manufactures moved '+(dpm>=0?'+':'')+Math.round(dpm*100)+'%. ';
+  fb+='Your real income: '+before.toFixed(0)+' → <b>'+G.income.toFixed(0)+'</b> ('+(eff>=0?'+':'')+(eff*100).toFixed(1)+'%).<br>';
+  if(G.role==='capitalist'){ fb+='<i>Specific-factors logic: your capital cannot leave Manufactures, so its return moves MORE than proportionally with pm (magnification).</i>'; }
+  else if(G.role==='landowner'){ fb+='<i>Specific-factors logic: land is stuck in Food, so a higher pm squeezes you twice — costlier manufactures and labor bid away to the M sector.</i>'; }
+  else { fb+='<i>Specific-factors logic: your wage rises less than pm. With manufactures at '+Math.round(G.basketM*100)+'% of your budget, this price move '+(incomeEffect(dpm)>=0?'helped':'hurt')+' your purchasing power.</i>'; }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('voteBtn').classList.add('hidden');
+  $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent = G.r<EVENTS.length-1 ? 'Next round' : 'See final score';
+  $('sIncome').textContent=G.income.toFixed(0); $('sPC').textContent=G.pc; $('sPm').textContent=G.pm.toFixed(2);
+});
+$('nextBtn').addEventListener('click',function(){
+  G.r++;
+  if(G.r<EVENTS.length){ round(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  // Score: your income gain relative to the best achievable gain for your role.
+  // Floor at the worst-case path so the scale uses the feasible range.
+  var worst=100; EVENTS.forEach(function(ev){ worst*= (1+Math.min(incomeEffect(ev.free.dpm),incomeEffect(ev.prot.dpm))); });
+  var score=(G.income-worst)/(G.bestIncome-worst);
+  score=Math.max(0,Math.min(1,score));
+  $('finalPct').textContent=Math.round(score*100)+'%';
+  $('finalMsg').textContent = 'Final real income '+G.income.toFixed(0)+' (best possible for a '+ROLES[G.role].label.toLowerCase()+': '+G.bestIncome.toFixed(0)+').' +
+    (score>0.8?' You read your class interest correctly almost every time.':score>0.5?' Decent — but you voted against your own factor at least once.':' You repeatedly backed policies that hurt your factor. Re-read §3.4 on who wins and who loses.');
+  var rec='<table><thead><tr><th>Round</th><th>Policy enacted</th><th>Vote</th><th>Your income</th></tr></thead><tbody>';
+  G.hist.forEach(function(h){ rec+='<tr><td>'+h.round+'</td><td>'+(h.side==='free'?'Open/liberalize':'Protect/restrict')+'</td><td>'+(h.won?'won':'lost')+'</td><td class="'+(h.dIncome>=0?'good':'bad')+'">'+(h.dIncome>=0?'+':'')+(h.dIncome*100).toFixed(1)+'%</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=score>0.8?'mastered':score>0.5?'proficient':score>0.25?'developing':'beginning';
+  saveResult(score,outcome,{ role:G.role, basketM:Math.round(G.basketM*100)/100, history:G.hist, finalIncome:Math.round(G.income), version:'p2-1' });
+}
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endowment Exchange — International Trade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0e17;color:#c9d2e8;font:14px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  h1{font-size:20px;color:#f0f4ff;} h1 .tag{font-size:11px;color:#7c6df2;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;}
+  .pill{font-size:12px;color:#8b96b3;border:1px solid rgba(255,255,255,.09);border-radius:99px;padding:5px 12px;}
+  .card{background:#131829;border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px;margin-bottom:14px;}
+  h2{font-size:15.5px;color:#f0f4ff;margin-bottom:8px;} h3{font-size:13.5px;color:#f0f4ff;margin-bottom:6px;}
+  p.sub{color:#8b96b3;font-size:13px;margin-bottom:10px;}
+  .btn{cursor:pointer;border:none;border-radius:9px;padding:10px 18px;font-size:13.5px;font-weight:600;background:#7c6df2;color:#fff;}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.09);color:#c9d2e8;font-weight:500;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:#0f1420;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 14px;text-align:center;}
+  .stat b{display:block;font-size:18px;color:#f0f4ff;} .stat span{font-size:11px;color:#8b96b3;text-transform:uppercase;letter-spacing:.06em;}
+  .good{color:#2ec27e;} .bad{color:#e5484d;} .warn{color:#e5a54b;}
+  .banner{border:1px solid rgba(229,165,75,.4);background:rgba(229,165,75,.08);color:#e5a54b;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px;}
+  .feedback{border-radius:10px;padding:12px 14px;font-size:13px;margin-top:10px;border:1px solid rgba(255,255,255,.09);background:#0f1420;}
+  .hidden{display:none;}
+  input[type=range]{width:100%;accent-color:#7c6df2;}
+  .endow{border:1px solid #7c6df2;border-radius:10px;padding:12px 16px;background:rgba(124,109,242,.08);margin-bottom:12px;font-size:13.5px;}
+  .big{font-size:34px;color:#f0f4ff;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.09);} th{color:#8b96b3;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+  .rounddots{display:flex;gap:6px;} .rounddots i{width:9px;height:9px;border-radius:50%;background:#2a3050;} .rounddots i.on{background:#7c6df2;}
+  .slidelab{display:flex;justify-content:space-between;font-size:12px;color:#8b96b3;margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="tag">Arena · Chapter 4</span>Endowment Exchange</h1>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div class="rounddots" id="dots"><i></i><i></i><i></i></div>
+      <div class="pill" id="whoPill">checking sign-in…</div>
+    </div>
+  </header>
+  <div id="attemptBanner" class="banner hidden"></div>
+
+  <div class="card" id="intro">
+    <h2>Your resources decide what you should sell to the world</h2>
+    <p class="sub">Each round you are dealt a random <b>endowment</b> of capital (K) and labor (L). Two industries compete for them: <b>Machinery</b> is capital-intensive, <b>Textiles</b> is labor-intensive. You decide how much K and how much L goes to Machinery; the rest makes Textiles.</p>
+    <p class="sub">Everything sells at world prices, and your citizens spend their income optimally on both goods — so your only job is the <b>production decision</b>: squeeze the most value out of your endowment. Heckscher-Ohlin says a capital-abundant country earns most by tilting toward Machinery and exporting it. Test it.</p>
+    <p class="sub">Score = value you generate ÷ the maximum possible from your endowment, averaged over 3 rounds. After each round we check whether your exports matched the H-O prediction.</p>
+    <button class="btn" id="startBtn">Deal round 1</button>
+  </div>
+
+  <div class="card hidden" id="play">
+    <div class="endow" id="endowBox"></div>
+    <p class="sub" id="priceLine"></p>
+    <h3>Send capital (K) to Machinery</h3>
+    <input type="range" id="kSlide" min="0" max="100" value="50" step="1">
+    <div class="slidelab"><span id="kM">–</span><span id="kT">–</span></div>
+    <h3 style="margin-top:10px;">Send labor (L) to Machinery</h3>
+    <input type="range" id="lSlide" min="0" max="100" value="50" step="1">
+    <div class="slidelab"><span id="lM">–</span><span id="lT">–</span></div>
+    <div class="stats">
+      <div class="stat"><b id="qM">–</b><span>machinery made</span></div>
+      <div class="stat"><b id="qT">–</b><span>textiles made</span></div>
+      <div class="stat"><b id="vNow">–</b><span>national income</span></div>
+      <div class="stat"><b id="vPct">–</b><span>of max possible</span></div>
+    </div>
+    <button class="btn" id="lockBtn">Lock in production</button>
+    <div class="feedback hidden" id="fb"></div>
+    <button class="btn ghost hidden" id="nextBtn" style="margin-top:10px;">Continue</button>
+  </div>
+
+  <div class="card hidden" id="done">
+    <h2>Exchange complete</h2>
+    <div style="text-align:center;padding:14px 0;">
+      <div class="big" id="finalPct">–%</div>
+      <div class="sub" id="finalMsg"></div>
+    </div>
+    <div id="recap"></div>
+    <div class="feedback" id="saveNote">Saving your result…</div>
+    <button class="btn ghost" style="margin-top:12px;" onclick="location.reload()">Play again</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+var SLUG = 'heckscher-ohlin';
+var MAX_GRADED = 2;
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function $(id){ return document.getElementById(id); }
+
+var Me = { user:null, courseId:null, used:0 };
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s=r.data?r.data.session:null;
+    if(!s||!s.user){ $('whoPill').textContent='Guest — score will not be saved'; return; }
+    Me.user=s.user; $('whoPill').textContent=s.user.email;
+    sb.from('it_enrollments').select('course_id,it_courses(owner_id)').eq('student_id',s.user.id).eq('status','active').then(function(er){
+      var rows=er.data||[];
+      var real=rows.filter(function(x){return x.it_courses&&x.it_courses.owner_id!==s.user.id;});
+      Me.courseId=real.length?real[0].course_id:(rows.length?rows[0].course_id:null);
+      var q=sb.from('it_arena_results').select('id',{count:'exact',head:true}).eq('student_id',s.user.id).eq('arena_slug',SLUG);
+      if(Me.courseId){ q=q.eq('course_id',Me.courseId); }
+      q.then(function(cr){
+        Me.used=cr.count||0;
+        $('attemptBanner').classList.remove('hidden');
+        $('attemptBanner').textContent = Me.used>=MAX_GRADED
+          ? 'Practice mode: both graded attempts used. Your grade keeps the average of your first two.'
+          : 'Graded attempt '+(Me.used+1)+' of '+MAX_GRADED+'.';
+      });
+    });
+  });
+}
+function saveResult(score,outcome,details){
+  if(!Me.user){ $('saveNote').textContent='Not signed in — score not saved. Launch from the course home while signed in.'; return; }
+  sb.from('it_arena_results').insert({ student_id:Me.user.id, course_id:Me.courseId, arena_slug:SLUG,
+    outcome:outcome, score:Math.round(score*1000)/1000, details:details }).then(function(r){
+    $('saveNote').textContent=r.error?('⚠ Could not save: '+r.error.message):'✓ Recorded.';
+  });
+}
+
+/* ---------------- model ----------------
+   Machinery: Qm = Km^0.7 * Lm^0.3   (capital-intensive)
+   Textiles:  Qt = Kt^0.3 * Lt^0.7   (labor-intensive)
+   Income V = pm*Qm + Qt (textiles = numeraire). Consumers split income 50/50,
+   so utility is monotone in V — maximize V. Optimum found by grid search.   */
+var ROUNDS = [
+  { K:200, L:100, pm:1.0, tag:'capital-abundant' },
+  { K:100, L:220, pm:1.1, tag:'labor-abundant' },
+  { K:160, L:160, pm:1.4, tag:'balanced (but machinery pays a premium)' }
+];
+var G={ r:0, results:[] };
+function prod(p, kShare, lShare){
+  var Km=p.K*kShare, Lm=p.L*lShare, Kt=p.K*(1-kShare), Lt=p.L*(1-lShare);
+  var Qm=Math.pow(Km,0.7)*Math.pow(Lm,0.3);
+  var Qt=Math.pow(Kt,0.3)*Math.pow(Lt,0.7);
+  return { Qm:Qm, Qt:Qt, V:p.pm*Qm+Qt };
+}
+function best(p){
+  var bv=0,bk=0,bl=0;
+  for(var k=0;k<=100;k++){ for(var l=0;l<=100;l++){
+    var v=prod(p,k/100,l/100).V;
+    if(v>bv){ bv=v; bk=k; bl=l; }
+  }}
+  return { V:bv, k:bk, l:bl };
+}
+function startRound(){
+  var p=ROUNDS[G.r];
+  p._best=best(p);
+  $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
+  $('fb').classList.add('hidden'); $('nextBtn').classList.add('hidden');
+  $('lockBtn').classList.remove('hidden');
+  var dots=$('dots').children; for(var i=0;i<3;i++){ dots[i].className=i<=G.r?'on':''; }
+  $('endowBox').innerHTML='<b>Round '+(G.r+1)+' endowment:</b> K = '+p.K+', L = '+p.L+' — you are <b>'+p.tag+'</b>.';
+  $('priceLine').innerHTML='World prices: 1 Machinery = <b>'+p.pm.toFixed(1)+'</b> Textiles. Machinery is capital-intensive (K-weight 0.7); Textiles are labor-intensive (L-weight 0.7).';
+  $('kSlide').value=50; $('lSlide').value=50;
+  refresh();
+}
+function refresh(){
+  var p=ROUNDS[G.r];
+  var ks=Number($('kSlide').value)/100, ls=Number($('lSlide').value)/100;
+  var o=prod(p,ks,ls);
+  $('kM').textContent=Math.round(p.K*ks)+' K → Machinery'; $('kT').textContent=Math.round(p.K*(1-ks))+' K → Textiles';
+  $('lM').textContent=Math.round(p.L*ls)+' L → Machinery'; $('lT').textContent=Math.round(p.L*(1-ls))+' L → Textiles';
+  $('qM').textContent=o.Qm.toFixed(1); $('qT').textContent=o.Qt.toFixed(1);
+  $('vNow').textContent=o.V.toFixed(1);
+  $('vPct').textContent=Math.round(100*o.V/p._best.V)+'%';
+}
+$('kSlide').addEventListener('input',refresh);
+$('lSlide').addEventListener('input',refresh);
+$('startBtn').addEventListener('click',startRound);
+
+$('lockBtn').addEventListener('click',function(){
+  var p=ROUNDS[G.r];
+  var ks=Number($('kSlide').value)/100, ls=Number($('lSlide').value)/100;
+  var o=prod(p,ks,ls);
+  var score=Math.max(0,Math.min(1,o.V/p._best.V));
+  // trade-pattern check: with 50/50 spending, home consumes Cm=V/(2pm), Ct=V/2.
+  var Cm=o.V/(2*p.pm), Ct=o.V/2;
+  var exM=o.Qm-Cm;   // >0 → net exporter of machinery
+  var kAbund=p.K/p.L > 1;
+  var hoOk=(kAbund&&exM>0)||(!kAbund&&exM<0)||(p.K===p.L);
+  G.results.push({ round:G.r+1, score:score, exportsMachinery:exM>0, hoOk:hoOk });
+  var fb='<b>Round score: '+Math.round(score*100)+'%</b> — you generated '+o.V.toFixed(1)+' of a possible '+p._best.V.toFixed(1)+' (optimum: '+p._best.k+'% of K and '+p._best.l+'% of L to Machinery).<br>';
+  fb+='After optimal consumption, you are a net <b>'+(exM>0?'exporter of Machinery':'exporter of Textiles')+'</b>. ';
+  if(p.K!==p.L){
+    fb+=hoOk?'<span class="good">Exactly what Heckscher-Ohlin predicts for a '+p.tag+' country: export the good intensive in your abundant factor.</span>'
+            :'<span class="warn">H-O predicts the opposite for a '+p.tag+' country — your allocation fought your endowment instead of using it.</span>';
+  } else {
+    fb+='With a balanced endowment, the machinery price premium (pm='+p.pm+') is what should pull resources toward Machinery.';
+  }
+  $('fb').innerHTML=fb; $('fb').classList.remove('hidden');
+  $('lockBtn').classList.add('hidden'); $('nextBtn').classList.remove('hidden');
+  $('nextBtn').textContent=G.r<ROUNDS.length-1?'Next round':'See final score';
+});
+$('nextBtn').addEventListener('click',function(){
+  G.r++;
+  if(G.r<ROUNDS.length){ startRound(); return; }
+  finish();
+});
+function finish(){
+  $('play').classList.add('hidden'); $('done').classList.remove('hidden');
+  var avg=G.results.reduce(function(s,r){return s+r.score;},0)/G.results.length;
+  $('finalPct').textContent=Math.round(avg*100)+'%';
+  $('finalMsg').textContent = avg>0.9?'Excellent — you let factor abundance drive specialization, exactly as H-O prescribes.'
+    : avg>0.7?'Good. To close the gap, match factor INTENSITY to factor ABUNDANCE more aggressively.'
+    : 'Review §4.2: the abundant factor should be concentrated in the industry that uses it intensively.';
+  var rec='<table><thead><tr><th>Round</th><th>Net export</th><th>H-O prediction</th><th>Score</th></tr></thead><tbody>';
+  G.results.forEach(function(r){ rec+='<tr><td>'+r.round+'</td><td>'+(r.exportsMachinery?'Machinery':'Textiles')+'</td><td>'+(r.hoOk?'<span class="good">matched</span>':'<span class="warn">violated</span>')+'</td><td>'+Math.round(r.score*100)+'%</td></tr>'; });
+  rec+='</tbody></table>';
+  $('recap').innerHTML=rec;
+  var outcome=avg>0.9?'mastered':avg>0.7?'proficient':avg>0.4?'developing':'beginning';
+  saveResult(avg,outcome,{ rounds:G.results, version:'p2-1' });
+}
+boot();
+</script>
+</body>
+</html>
