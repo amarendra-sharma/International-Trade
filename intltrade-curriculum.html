@@ -733,20 +733,20 @@ c100.7 8.3 195.3 44 280 108 55.3 42 101.7 93 139 153l9 14c2.7-4 5.7-8.7 9-14
           <line x1="70" y1="40" x2="70" y2="330" stroke="var(--line2)" stroke-width="1.5"/>
           <line x1="690" y1="40" x2="690" y2="330" stroke="var(--line2)" stroke-width="1.5"/>
           <line x1="70" y1="330" x2="690" y2="330" stroke="var(--line2)" stroke-width="1.5"/>
-          <!-- VMPL_M from left: decreasing from (70,70) to (690,300) -->
-          <path d="M70,70 C 250,150 420,230 690,300" fill="none" stroke="var(--violet)" stroke-width="2.6"/>
-          <!-- VMPL_F from right (mirror): decreasing from (690,90) leftwards to (70,290) -->
-          <path d="M690,90 C 500,170 300,250 70,300" fill="none" stroke="var(--amber)" stroke-width="2.6"/>
-          <!-- equilibrium near intersection ~ (400,222) -->
-          <circle cx="404" cy="222" r="5.5" fill="var(--green)"/>
-          <line x1="404" y1="222" x2="404" y2="330" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
-          <line x1="70" y1="222" x2="404" y2="222" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
-          <text x="60" y="226" text-anchor="end" fill="var(--green)" font-family="var(--sans)" font-size="12" font-weight="600">w</text>
-          <text x="120" y="92" fill="var(--violet2)" font-family="var(--sans)" font-size="13" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan>·MPL&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan></text>
-          <text x="560" y="112" fill="var(--amber)" font-family="var(--sans)" font-size="13" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan>·MPL&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan></text>
+          <!-- manufacturing VMPL from left origin O_M: high at left (70,90), low at right (690,300) -->
+          <line x1="70" y1="90" x2="690" y2="300" stroke="var(--violet)" stroke-width="2.6"/>
+          <!-- food VMPL from right origin O_F: high at right (690,110), low at left (70,290) -->
+          <line x1="70" y1="290" x2="690" y2="110" stroke="var(--amber)" stroke-width="2.6"/>
+          <!-- equilibrium: exact crossing of the two lines at (388,198) -->
+          <line x1="70" y1="198" x2="388" y2="198" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
+          <line x1="388" y1="198" x2="388" y2="330" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
+          <circle cx="388" cy="198" r="5.5" fill="var(--green)"/>
+          <text x="60" y="202" text-anchor="end" fill="var(--green)" font-family="var(--sans)" font-size="12" font-weight="600">w</text>
+          <text x="110" y="80" fill="var(--violet2)" font-family="var(--sans)" font-size="13" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan>·MPL&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan></text>
+          <text x="548" y="126" fill="var(--amber)" font-family="var(--sans)" font-size="13" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan>·MPL&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan></text>
           <text x="70" y="350" fill="var(--muted)" font-family="var(--sans)" font-size="12">O&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan> (labor in manufactures &#8594;)</text>
           <text x="690" y="350" text-anchor="end" fill="var(--muted)" font-family="var(--sans)" font-size="12">(&#8592; labor in food) O&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan></text>
-          <text x="392" y="348" fill="var(--green)" font-family="var(--sans)" font-size="12" font-weight="600">L&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan></text>
+          <text x="396" y="348" fill="var(--green)" font-family="var(--sans)" font-size="12" font-weight="600">L&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan></text>
           <text x="40" y="30" fill="var(--bright)" font-family="var(--sans)" font-size="12.5">Wage / value of marginal product</text>
         </svg>
         <figcaption><b>Figure 3.1 — The allocation of labor between sectors.</b> Manufacturing labor is measured rightward from <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>O</mi><mi>M</mi></msub></mrow><annotation encoding="application/x-tex">O_M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.02778em;">O</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em;"><span style="top:-2.55em;margin-left:-0.0278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.10903em;">M</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>, food labor leftward from <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>O</mi><mi>F</mi></msub></mrow><annotation encoding="application/x-tex">O_F</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.02778em;">O</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em;"><span style="top:-2.55em;margin-left:-0.0278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight" style="margin-right:0.13889em;">F</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>; the box width is the whole labor force. The economy-wide wage <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>w</mi></mrow><annotation encoding="application/x-tex">w</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em;"></span><span class="mord mathnormal" style="margin-right:0.02691em;">w</span></span></span></span> and the split of labor are set where the two value-of-marginal-product curves intersect. To the left of the crossing, manufacturing pays more and draws workers; to the right, food does. Only at the intersection is the wage equal in both sectors.</figcaption>
@@ -768,24 +768,36 @@ c-1 5-5 9-11 9h-2L532 67 19 159h-2c-5 0-9-4-11-9l-5-22c-1-6 2-12 8-13z'/></svg><
           <line x1="70" y1="40" x2="70" y2="330" stroke="var(--line2)" stroke-width="1.5"/>
           <line x1="690" y1="40" x2="690" y2="330" stroke="var(--line2)" stroke-width="1.5"/>
           <line x1="70" y1="330" x2="690" y2="330" stroke="var(--line2)" stroke-width="1.5"/>
-          <!-- original VMPL_M -->
-          <path d="M70,90 C 250,168 420,246 690,312" fill="none" stroke="var(--violet)" stroke-width="2" stroke-dasharray="5 4" opacity=".7"/>
-          <!-- shifted-up VMPL_M -->
-          <path d="M70,54 C 250,132 420,210 690,286" fill="none" stroke="var(--violet)" stroke-width="2.6"/>
-          <!-- VMPL_F from right -->
-          <path d="M690,96 C 500,176 300,256 70,300" fill="none" stroke="var(--amber)" stroke-width="2.6"/>
-          <!-- old eq ~ (398,236) new eq ~ (440,214) -->
-          <circle cx="398" cy="238" r="5" fill="#7c6df2"/>
-          <circle cx="452" cy="214" r="5.5" fill="var(--green)"/>
-          <line x1="70" y1="238" x2="398" y2="238" stroke="#7c6df2" stroke-width="1" stroke-dasharray="4 3" opacity=".6"/>
-          <line x1="70" y1="214" x2="452" y2="214" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
-          <line x1="452" y1="214" x2="452" y2="330" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
-          <line x1="398" y1="238" x2="398" y2="330" stroke="#7c6df2" stroke-width="1" stroke-dasharray="4 3" opacity=".6"/>
-          <text x="60" y="242" text-anchor="end" fill="#7c6df2" font-family="var(--sans)" font-size="11">w&#8321;</text>
-          <text x="60" y="212" text-anchor="end" fill="var(--green)" font-family="var(--sans)" font-size="12" font-weight="600">w&#8322;</text>
-          <text x="120" y="66" fill="var(--violet2)" font-family="var(--sans)" font-size="12.5" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan>&#8242;·MPL&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan></text>
-          <text x="540" y="118" fill="var(--amber)" font-family="var(--sans)" font-size="12.5" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan>·MPL&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan></text>
-          <text x="410" y="348" fill="var(--green)" font-family="var(--sans)" font-size="11">labor shifts to manufactures &#8594;</text>
+          <!-- food VMPL from right origin O_F: high at right (690,110), low at left (70,290) -->
+          <line x1="70" y1="290" x2="690" y2="110" stroke="var(--amber)" stroke-width="2.6"/>
+          <!-- original manufacturing VMPL (dashed): (70,100)->(690,300) -->
+          <line x1="70" y1="100" x2="690" y2="300" stroke="var(--violet)" stroke-width="2" stroke-dasharray="5 4" opacity=".6"/>
+          <!-- shifted-up manufacturing VMPL (solid): (70,64)->(690,264) -->
+          <line x1="70" y1="64" x2="690" y2="264" stroke="var(--violet)" stroke-width="2.6"/>
+          <!-- upward-shift arrows to signal the P_M rise -->
+          <g stroke="var(--violet2)" stroke-width="1.4" fill="none" opacity=".85">
+            <path d="M175,150 L175,116"/><path d="M170,124 L175,113 L180,124"/>
+            <path d="M255,175 L255,141"/><path d="M250,149 L255,138 L260,149"/>
+          </g>
+          <text x="196" y="126" fill="var(--violet2)" font-family="var(--sans)" font-size="11">P&#8202;<tspan baseline-shift="sub" font-size="8">M</tspan> rises</text>
+          <!-- OLD equilibrium: exact crossing of dashed mfg and food at (380,200) -->
+          <line x1="70" y1="200" x2="380" y2="200" stroke="#7c6df2" stroke-width="1" stroke-dasharray="4 3" opacity=".55"/>
+          <line x1="380" y1="200" x2="380" y2="330" stroke="#7c6df2" stroke-width="1" stroke-dasharray="4 3" opacity=".55"/>
+          <circle cx="380" cy="200" r="5" fill="#7c6df2"/>
+          <!-- NEW equilibrium: exact crossing of solid mfg and food at (439,183) -->
+          <line x1="70" y1="183" x2="439" y2="183" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
+          <line x1="439" y1="183" x2="439" y2="330" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
+          <circle cx="439" cy="183" r="5.5" fill="var(--green)"/>
+          <text x="60" y="204" text-anchor="end" fill="#7c6df2" font-family="var(--sans)" font-size="11">w&#8321;</text>
+          <text x="60" y="181" text-anchor="end" fill="var(--green)" font-family="var(--sans)" font-size="12" font-weight="600">w&#8322;</text>
+          <text x="110" y="56" fill="var(--violet2)" font-family="var(--sans)" font-size="12" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan>&#8242;·MPL&#8202;<tspan baseline-shift="sub" font-size="9">M</tspan></text>
+          <text x="548" y="126" fill="var(--amber)" font-family="var(--sans)" font-size="12" font-weight="600">P&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan>·MPL&#8202;<tspan baseline-shift="sub" font-size="9">F</tspan></text>
+          <!-- labor reallocation arrow along the base, from old to new split -->
+          <path d="M384,344 L433,344" stroke="var(--green)" stroke-width="1.4" fill="none"/>
+          <path d="M427,340 L436,344 L427,348" stroke="var(--green)" stroke-width="1.4" fill="none"/>
+          <text x="388" y="362" fill="var(--green)" font-family="var(--sans)" font-size="10.5">labor &#8594; manufactures</text>
+          <text x="66" y="346" fill="var(--faint)" font-family="var(--sans)" font-size="10.5">O&#8202;<tspan baseline-shift="sub" font-size="8">M</tspan></text>
+          <text x="694" y="346" text-anchor="end" fill="var(--faint)" font-family="var(--sans)" font-size="10.5">O&#8202;<tspan baseline-shift="sub" font-size="8">F</tspan></text>
           <text x="40" y="30" fill="var(--bright)" font-family="var(--sans)" font-size="12.5">Wage / value of marginal product</text>
         </svg>
         <figcaption><b>Figure 3.2 — A rise in the price of manufactures.</b> The manufacturing curve shifts up in proportion to <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mover accent="true"><mi>P</mi><mo stretchy="true">^</mo></mover><mi>M</mi></msub></mrow><annotation encoding="application/x-tex">\widehat P_M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0733em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9233em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathnormal" style="margin-right:0.13889em;">P</span></span><span class="svg-align" style="width:calc(100% - 0.1667em);margin-left:0.1667em;top:-3.6833em;"><span class="pstrut" style="height:3em;"></span><span style="height:0.24em;"><svg xmlns="http://www.w3.org/2000/svg" width='100%' height='0.24em' viewBox='0 0 1062 239' preserveAspectRatio='none'><path d='M529 0h5l519 115c5 1 9 5 9 10 0 1-1 2-1 3l-4 22
