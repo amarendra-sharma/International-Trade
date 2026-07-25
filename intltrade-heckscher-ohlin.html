@@ -221,6 +221,52 @@ function finish(){
   var outcome=avg>0.9?'mastered':avg>0.7?'proficient':avg>0.4?'developing':'beginning';
   saveResult(avg,outcome,{ rounds:G.results, version:'p2-1' });
 }
+
+/* ---- subscription gate: only the free arena plays without an active subscription ---- */
+(function(){
+  var FREE={'ricardian':true};
+  if(FREE[SLUG]) return;
+  var wrap=document.querySelector('.wrap');
+  function setBlur(on){ if(!wrap)return; wrap.style.filter=on?'blur(5px)':''; wrap.style.pointerEvents=on?'none':''; }
+  function grant(){ setBlur(false); }
+  function deny(){
+    setBlur(true);
+    if(document.getElementById('itGateOv')) return;
+    var ov=document.createElement('div'); ov.id='itGateOv';
+    ov.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(11,14,23,.9);padding:24px;';
+    ov.innerHTML='<div style="max-width:460px;background:#131829;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:30px;text-align:center;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#c9d2e8;">'
+      +'<div style="font-size:36px;margin-bottom:10px;">🔒</div>'
+      +'<h2 style="color:#f0f4ff;margin:0 0 8px;font-size:20px;">This arena is part of the full course</h2>'
+      +'<p style="font-size:13.5px;color:#8b96b3;line-height:1.65;margin:0 0 20px;">The <b>Comparative Advantage Workshop</b> and <b>Chapters 1–2</b> are free to preview. Subscribe to unlock all 13 arenas and every chapter.</p>'
+      +'<a href="index.html" style="display:inline-block;background:#7c6df2;color:#fff;text-decoration:none;font-weight:600;font-size:13.5px;border-radius:10px;padding:12px 22px;">Subscribe on the course home →</a>'
+      +'</div>';
+    document.body.appendChild(ov);
+  }
+  setBlur(true);
+  try{
+    sb.auth.getSession().then(function(r){
+      var s=r.data?r.data.session:null;
+      if(!s||!s.user){ deny(); return; }
+      var uid=s.user.id;
+      sb.from('it_profiles').select('role').eq('id',uid).maybeSingle().then(function(p){
+        var role=p&&p.data?p.data.role:null;
+        if(role==='admin'||role==='instructor'){ grant(); return; }
+        sb.from('it_enrollments').select('course_id').eq('student_id',uid).eq('status','active').then(function(er){
+          var ids=(er.data||[]).map(function(x){return x.course_id;});
+          var wP=ids.length?sb.from('it_fee_waivers').select('student_id').in('course_id',ids):Promise.resolve({data:[]});
+          Promise.all([ sb.from('it_subscriptions').select('status,expires_at').eq('student_id',uid).eq('status','active'), wP ]).then(function(res){
+            var wv=res[1]&&res[1].data?res[1].data:[];
+            for(var i=0;i<wv.length;i++){ var wid=wv[i].student_id; if(wid===null||wid===undefined||String(wid)===String(uid)){ grant(); return; } }
+            var rows=res[0]&&res[0].data?res[0].data:[]; var now=Date.now();
+            for(var j=0;j<rows.length;j++){ var exp=rows[j].expires_at?new Date(rows[j].expires_at).getTime():null; if(exp===null||exp>now){ grant(); return; } }
+            deny();
+          }, deny);
+        }, deny);
+      }, deny);
+    }, deny);
+  }catch(e){ deny(); }
+})();
+
 boot();
 </script>
 </body>

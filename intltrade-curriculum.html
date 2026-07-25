@@ -133,6 +133,14 @@
   .cn-next{background:var(--violet);border-color:var(--violet);color:#fff;text-align:right;margin-left:auto;}
   .cn-next .cn-k{color:rgba(255,255,255,.72);}
   .cn-next:hover{filter:brightness(1.08);border-color:var(--violet);}
+  /* subscription paywall for gated chapters */
+  .paywall{display:none;}
+  .paywall-card{max-width:540px;margin:36px auto;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:16px;padding:40px 34px;text-align:center;font-family:var(--sans);}
+  .paywall-lock{font-size:42px;margin-bottom:10px;}
+  .paywall-card h3{font-size:21px;color:var(--bright);margin:0 0 12px;border:none;padding:0;font-family:var(--serif);}
+  .paywall-msg{font-size:14px;color:var(--muted);line-height:1.7;margin:0 0 24px;}
+  .paywall-cta{display:inline-block;background:var(--violet);color:#fff;text-decoration:none;font-weight:600;font-size:14px;border-radius:10px;padding:12px 26px;}
+  .paywall-cta:hover{filter:brightness(1.08);}
 </style>
 <noscript><style>.page{display:block!important}</style></noscript>
 </head>
@@ -1179,11 +1187,41 @@ c-1 5-5 9-11 9h-2L532 67 19 159h-2c-5 0-9-4-11-9l-5-22c-1-6 2-12 8-13z'/></svg><
     p.appendChild(nav);
   });
 
+  // ---- subscription gating: chapters 1-2 (and title/about) free; 3+ gated ----
+  var IT_ACCESS = null; // null = checking, true = full access, false = locked
+  function gated(id){ var m=/^chapter-(\d+)$/.exec(id); return !!(m && Number(m[1])>=3); }
+  function ensurePaywall(el){
+    var pw=el.querySelector(':scope > .paywall'); if(pw){ return pw; }
+    pw=document.createElement('div'); pw.className='paywall';
+    pw.innerHTML='<div class="paywall-card"><div class="paywall-lock">🔒</div>'+
+      '<h3>This chapter is part of the full course</h3>'+
+      '<p class="paywall-msg"></p>'+
+      '<a class="paywall-cta" href="index.html">Subscribe on the course home &rarr;</a></div>';
+    var nav=el.querySelector(':scope > .chapter-nav');
+    el.insertBefore(pw, nav||null);
+    return pw;
+  }
+  function applyGate(id){
+    var el=document.getElementById(id); if(!el || !gated(id)){ return; }
+    var locked = IT_ACCESS!==true;
+    var pw=ensurePaywall(el);
+    var msg=pw.querySelector('.paywall-msg');
+    msg.innerHTML = (IT_ACCESS===null)
+      ? 'Checking your access…'
+      : 'Chapters 1–2 and the Comparative Advantage Workshop arena are free to preview. Subscribe to unlock all 14 chapters and 13 arenas.';
+    Array.prototype.forEach.call(el.children, function(c){
+      if(c.classList.contains('paywall')){ c.style.display = locked?'block':'none'; }
+      else if(c.classList.contains('chapter-nav')){ c.style.display=''; }
+      else { c.style.display = locked ? 'none' : ''; }
+    });
+  }
+
   function show(id){
     var i=ids.indexOf(id); if(i<0){ i=0; id=ids[0]; }
     pages.forEach(function(p){ p.classList.toggle('active', p.id===id); });
     links.forEach(function(a){ a.classList.toggle('on', a.getAttribute('href')==='#'+id); });
     try{ history.replaceState(null,'', id==='title'?location.pathname+location.search:'#'+id); }catch(e){}
+    applyGate(id);
     window.scrollTo(0,0);
   }
   document.addEventListener('click', function(e){
@@ -1195,6 +1233,37 @@ c-1 5-5 9-11 9h-2L532 67 19 159h-2c-5 0-9-4-11-9l-5-22c-1-6 2-12 8-13z'/></svg><
   });
   window.addEventListener('hashchange', function(){ show((location.hash||'#title').slice(1)); });
   show((location.hash||'#title').slice(1));
+
+  // ---- resolve access (mirror of the shell's resolveAccess) ----
+  (function(){
+    var SUPABASE_URL='https://rtaiivegcqqmdchpguzn.supabase.co';
+    var SUPABASE_ANON_KEY='sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+    function settle(v){ IT_ACCESS=!!v; applyGate((location.hash||'#title').slice(1)); }
+    if(!window.supabase){ settle(false); return; }
+    var sb=window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    try{
+      sb.auth.getSession().then(function(r){
+        var s=r.data?r.data.session:null;
+        if(!s||!s.user){ settle(false); return; }
+        var uid=s.user.id;
+        sb.from('it_profiles').select('role').eq('id',uid).maybeSingle().then(function(p){
+          var role=p&&p.data?p.data.role:null;
+          if(role==='admin'||role==='instructor'){ settle(true); return; }
+          sb.from('it_enrollments').select('course_id').eq('student_id',uid).eq('status','active').then(function(er){
+            var cids=(er.data||[]).map(function(x){return x.course_id;});
+            var wP=cids.length?sb.from('it_fee_waivers').select('student_id').in('course_id',cids):Promise.resolve({data:[]});
+            Promise.all([ sb.from('it_subscriptions').select('status,expires_at').eq('student_id',uid).eq('status','active'), wP ]).then(function(res){
+              var wv=res[1]&&res[1].data?res[1].data:[];
+              for(var i=0;i<wv.length;i++){ var wid=wv[i].student_id; if(wid===null||wid===undefined||String(wid)===String(uid)){ settle(true); return; } }
+              var rows=res[0]&&res[0].data?res[0].data:[]; var now=Date.now();
+              for(var j=0;j<rows.length;j++){ var exp=rows[j].expires_at?new Date(rows[j].expires_at).getTime():null; if(exp===null||exp>now){ settle(true); return; } }
+              settle(false);
+            }, function(){ settle(false); });
+          }, function(){ settle(false); });
+        }, function(){ settle(false); });
+      }, function(){ settle(false); });
+    }catch(e){ settle(false); }
+  })();
 })();
 
 /* ---------- Live World Bank data + Figure 1.1 chart ---------- */
