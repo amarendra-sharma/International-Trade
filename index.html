@@ -410,9 +410,9 @@
 /* ====================================================================
    CONFIG
    ==================================================================== */
-var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';   // TODO: your Supabase project URL
+var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
 var IT_BUILD = 'intltrade-phase1-2026-07';
-var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';   // TODO: your project's anon (public) key
+var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Shared MacroNations proctoring engine. Point it at International Trade's existing
 // table/bucket so no data migration is needed.
@@ -523,9 +523,9 @@ function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='
 $('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
 if($('guestBrowseBtn')){ $('guestBrowseBtn').addEventListener('click', function(){
-  // Open the public curriculum sampler; free chapters (1-2) and the Comparative Advantage
-  // Dilemma arena are accessible without an account.
-  window.open('intltrade-curriculum.html', '_blank');
+  // Enter the app as a guest so the free Textbook (Chapters 1-2) AND the free
+  // Comparative Advantage Workshop arena are both browsable without an account.
+  enterGuest();
 }); }
 if($('forgotLink')){ $('forgotLink').addEventListener('click', function(ev){
   ev.preventDefault();
@@ -608,6 +608,12 @@ function onSignedIn(user){
 // Everyone enters as a student. Instructors/admins get extra nav groups.
 function enterApp(user){
   show($('appScreen'));
+  // undo any guest-mode nav hiding (in case a guest signed in without reload)
+  $('appScreen').classList.remove('is-guest');
+  ['myannounce','mymaterials','practice','myexams','myassignments','mygrades','progress'].forEach(function(v){
+    var it=document.querySelector('.nav-item[data-view="'+v+'"]');
+    if(it){ it.classList.remove('hidden'); if(it.parentNode){ it.parentNode.classList.remove('hidden'); } }
+  });
   $('sideUser').textContent=user.email;
   var role=State.role;
   $('sideRole').textContent = (role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student');
@@ -631,6 +637,43 @@ function enterApp(user){
   } else {
     switchView('home');
   }
+}
+// Guest preview: enter the app with no account. Free content only — Textbook
+// (Chapters 1-2) and the Comparative Advantage Workshop arena. Account-only
+// sections (Practice, Exams, Assignments, Grades, Progress, Announcements,
+// Materials) are hidden; the rest is gated by the normal subscription check.
+function enterGuest(){
+  State.user=null; State.profile=null; State.role='guest'; State.hasAccess=false; State.guest=true;
+  hide($('authScreen')); show($('appScreen'));
+  $('appScreen').classList.add('is-guest');
+  if($('sideUser')){ $('sideUser').textContent='Guest'; }
+  if($('sideRole')){ $('sideRole').textContent='Free preview'; }
+  hide($('teachGroup')); hide($('adminGroup'));
+  // hide account-only nav items; keep Home, Textbook, Arenas
+  var hideViews={ myannounce:1, mymaterials:1, practice:1, myexams:1, myassignments:1, mygrades:1, progress:1 };
+  Array.prototype.forEach.call(document.querySelectorAll('#appScreen .nav-item[data-view]'), function(it){
+    if(hideViews[it.getAttribute('data-view')]){ it.classList.add('hidden'); }
+  });
+  var trk=document.querySelector('.nav-item[data-view="mygrades"]');
+  if(trk && trk.parentNode){ trk.parentNode.classList.add('hidden'); }   // hide the empty "Track" group
+  loadPlatformSettings();
+  renderChapters(); renderArenas();
+  // guest home: quick links to the free chapters and the free arena
+  if($('homeStats')){ $('homeStats').innerHTML=''; }
+  if($('homeQuick')){
+    $('homeQuick').innerHTML =
+      quickCard('📖','Read free chapters','Chapters 1–2 are open to browse','chapters') +
+      quickCard('🎮','Play the free arena','Comparative Advantage Workshop','arenas') +
+      quickCard('🔓','Unlock everything','Create an account to subscribe','subscribe');
+    Array.prototype.forEach.call($('homeQuick').querySelectorAll('[data-go]'), function(el){
+      el.addEventListener('click', function(){
+        var v=el.getAttribute('data-go');
+        if(v==='subscribe'){ openSubscribePrompt('the full International Trade course'); }
+        else { switchView(v); }
+      });
+    });
+  }
+  switchView('home');
 }
 function loadPlatformSettings(){
   return sb.from('it_platform_settings').select('*').eq('id',1).maybeSingle().then(function(res){
