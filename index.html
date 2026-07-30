@@ -2834,32 +2834,39 @@ function resolveAccess() {
   // student has an active, non-expired subscription OR a super-admin fee waiver
   // (course-wide or per-student) in any enrolled course.
   if (State.role === 'admin' || State.role === 'instructor') { State.hasAccess = true; return Promise.resolve(true); }
+  if (State.guest || !State.user) { State.hasAccess = false; return Promise.resolve(false); }
   var uid = State.user.id;
-  var enrolledCourseIds = (State.courses || []).map(function(c){ return c.id; });
-  var waiverP = enrolledCourseIds.length
-    ? sb.from('it_fee_waivers').select('course_id,student_id').in('course_id', enrolledCourseIds)
-    : Promise.resolve({ data: [] });
-  return Promise.all([
-    sb.from('it_subscriptions').select('status,expires_at').eq('student_id', uid).eq('status','active'),
-    waiverP
-  ]).then(function(res){
-    // 1) waiver check
-    var waivers = res[1] && res[1].data ? res[1].data : [];
-    for (var w = 0; w < waivers.length; w++) {
-      if (waivers[w].student_id === null || waivers[w].student_id === undefined || String(waivers[w].student_id) === String(uid)) {
-        State.hasAccess = true; return true;
+  // A student does NOT own the instructor's course, so State.courses (which for
+  // non-staff holds only self-owned practice courses) is the wrong source here.
+  // Look up the student's ACTUAL active enrollments; otherwise a super-admin fee
+  // waiver on the enrolled course is never seen and the student hits the paywall.
+  return sb.from('it_enrollments').select('course_id').eq('student_id', uid).eq('status','active').then(function(enr){
+    var enrolledCourseIds = (enr && enr.data ? enr.data : []).map(function(e){ return e.course_id; });
+    var waiverP = enrolledCourseIds.length
+      ? sb.from('it_fee_waivers').select('course_id,student_id').in('course_id', enrolledCourseIds)
+      : Promise.resolve({ data: [] });
+    return Promise.all([
+      sb.from('it_subscriptions').select('status,expires_at').eq('student_id', uid).eq('status','active'),
+      waiverP
+    ]).then(function(res){
+      // 1) waiver check (course-wide waiver has student_id = null)
+      var waivers = res[1] && res[1].data ? res[1].data : [];
+      for (var w = 0; w < waivers.length; w++) {
+        if (waivers[w].student_id === null || waivers[w].student_id === undefined || String(waivers[w].student_id) === String(uid)) {
+          State.hasAccess = true; return true;
+        }
       }
-    }
-    // 2) subscription check
-    var rows = res[0] && res[0].data ? res[0].data : [];
-    var now = Date.now();
-    var ok = false, i;
-    for (i = 0; i < rows.length; i++) {
-      var exp = rows[i].expires_at ? new Date(rows[i].expires_at).getTime() : null;
-      if (exp === null || exp > now) { ok = true; break; }
-    }
-    State.hasAccess = ok;
-    return ok;
+      // 2) subscription check
+      var rows = res[0] && res[0].data ? res[0].data : [];
+      var now = Date.now();
+      var ok = false, i;
+      for (i = 0; i < rows.length; i++) {
+        var exp = rows[i].expires_at ? new Date(rows[i].expires_at).getTime() : null;
+        if (exp === null || exp > now) { ok = true; break; }
+      }
+      State.hasAccess = ok;
+      return ok;
+    });
   }).catch(function(){ State.hasAccess = false; return false; });
 }
 function chapterLocked(n) { if (State.hasAccess) { return false; } return !FREE_CHAPTERS[n]; }
