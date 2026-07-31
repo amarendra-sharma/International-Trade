@@ -699,10 +699,10 @@ function getHideSelfStudy(){ try{ var v=localStorage.getItem('it_hideSelfStudy')
 function setHideSelfStudy(on){ try{ localStorage.setItem('it_hideSelfStudy', on?'1':'0'); }catch(e){} }
 function selfStudyEnabled(){ return !(State.settings && State.settings.self_study_enabled === false); }
 function applySelfStudyVisibility(){
-  var on = selfStudyEnabled();
+  // Practice stays available to enrolled students (it hosts graded quizzes);
+  // the Self-Study SWITCH only stops provisioning + hides the Self-Study course.
   var nav = document.querySelector('.nav-item[data-view="practice"]');
-  if(nav){ if(on){ nav.classList.remove('hidden'); } else { nav.classList.add('hidden'); } }
-  if(!on && currentView==='practice'){ switchView('home'); }
+  if(nav && !State.guest){ nav.classList.remove('hidden'); }
 }
 function coursesForDisplay(){
   var list = State.courses || [];
@@ -804,7 +804,6 @@ function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_V
 var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading','flags'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics','reviews'];
 function viewAllowed(view){
-  if(view==='practice' && !selfStudyEnabled()){ return false; }
   if(isStudentView(view)){ return true; }
   if(ADMIN_VIEWS.indexOf(view)>=0){ return State.role==='admin'; }
   if(INSTRUCTOR_VIEWS.indexOf(view)>=0){ return State.role==='instructor' || State.role==='admin'; }
@@ -1190,12 +1189,16 @@ function loadRoster(){
         '<td>'+acLabel+'</td>'+
         '<td>'+esc(r.enrolled_at?new Date(r.enrolled_at).toLocaleDateString():'-')+'</td>'+
         '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-accom="'+r.student_id+'" data-email="'+esc(p.email||'')+'">Accommodate</button>'+
+        '<button class="btn btn-ghost btn-sm" data-ext="'+r.student_id+'" data-email="'+esc(p.email||'')+'">Extensions</button>'+
         '<button class="btn btn-ghost btn-sm" data-drop="'+r.id+'" data-st="'+esc(r.status)+'">'+(r.status==='active'?'Drop':'Reactivate')+'</button></td></tr>';
     });
     html+='</tbody></table></div>';
     $('rosterBody').innerHTML=html;
     Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-accom]'), function(b){
       b.addEventListener('click', function(){ openAccommodation(b.getAttribute('data-accom'), b.getAttribute('data-email'), accomBy[b.getAttribute('data-accom')]); });
+    });
+    Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-ext]'), function(b){
+      b.addEventListener('click', function(){ openOverridesModal(b.getAttribute('data-ext'), b.getAttribute('data-email')); });
     });
     Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-drop]'), function(b){
       b.addEventListener('click', function(){
@@ -3051,6 +3054,88 @@ function openAssignmentEditor(id){
   });
 }
 
+
+/* ====================================================================
+   PER-STUDENT OVERRIDES — extra attempts + rescheduled deadlines for a
+   specific exam, graded quiz, or assignment (missed deadlines / glitches).
+   ==================================================================== */
+function openOverridesModal(studentId, email){
+  var courseId=State.teachCourseId;
+  if(!courseId){ alert('Select a course first.'); return; }
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:600px;"><h2 style="margin-bottom:4px;">Extensions &amp; attempts</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">'+esc(email||'student')+' &middot; grant extra attempts or a new deadline for one exam, graded quiz, or assignment &mdash; e.g. after a missed deadline or a glitch that auto-submitted their work.</div>'+
+    '<div id="ovMsg" class="msg"></div>'+
+    '<div class="field"><label>Applies to</label><select id="ovScope"><option value="exam">Exam</option><option value="quiz">Graded quiz (by chapter)</option><option value="assignment">Assignment</option></select></div>'+
+    '<div class="field" id="ovTargetWrap"><label>Which one</label><select id="ovTarget"></select></div>'+
+    '<div class="field hidden" id="ovChapterWrap"><label>Chapter number</label><input id="ovChapter" type="number" min="1" max="14" value="1"></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
+      '<div class="field"><label>Extra attempts</label><input id="ovExtra" type="number" min="0" value="1"></div>'+
+      '<div class="field"><label>New deadline (optional)</label><input id="ovDeadline" type="datetime-local"></div>'+
+    '</div>'+
+    '<div class="field"><label>New open time (optional)</label><input id="ovOpens" type="datetime-local"></div>'+
+    '<div class="field"><label>Note (optional)</label><input id="ovNote" placeholder="e.g. auto-submitted by a glitch — allowed to finish"></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="ovCancel">Close</button><button class="btn btn-primary" id="ovSave">Grant</button></div>'+
+    '<div style="margin-top:16px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);margin-bottom:6px;">Current overrides for this student</div><div id="ovList">'+loadingCard()+'</div></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  $('ovCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  var exams=[], assignments=[];
+  function fillTarget(){
+    var scope=$('ovScope').value, tw=$('ovTargetWrap'), cw=$('ovChapterWrap');
+    if(scope==='quiz'){ tw.classList.add('hidden'); cw.classList.remove('hidden'); return; }
+    tw.classList.remove('hidden'); cw.classList.add('hidden');
+    var list = scope==='exam'?exams:assignments;
+    $('ovTarget').innerHTML = list.length ? list.map(function(x){ return '<option value="'+x.id+'">'+esc(x.title)+'</option>'; }).join('') : '<option value="">(none yet)</option>';
+  }
+  $('ovScope').addEventListener('change', fillTarget);
+  Promise.all([
+    sb.from('it_exams').select('id,title').eq('course_id',courseId).order('created_at',{ascending:false}),
+    sb.from('it_assignments').select('id,title').eq('course_id',courseId).order('created_at',{ascending:false})
+  ]).then(function(r){ exams=(r[0].data||[]); assignments=(r[1].data||[]); fillTarget(); });
+  function loadList(){
+    sb.from('it_overrides').select('*').eq('course_id',courseId).eq('student_id',studentId).order('created_at',{ascending:false}).then(function(res){
+      var host=$('ovList'); if(!host){ return; }
+      if(res.error){ host.innerHTML='<div class="msg err" style="display:block;">The overrides table is not installed yet. Run migration <b>006_overrides.sql</b> in Supabase, then reopen.</div>'; var sv=$('ovSave'); if(sv){ sv.disabled=true; } return; }
+      var rows=res.data||[];
+      if(rows.length===0){ host.innerHTML='<div class="card empty">No overrides yet.</div>'; return; }
+      var exMap={}; exams.forEach(function(x){ exMap[x.id]=x.title; });
+      var asMap={}; assignments.forEach(function(x){ asMap[x.id]=x.title; });
+      host.innerHTML=rows.map(function(o){
+        var what = o.scope==='exam' ? ('Exam: '+esc(exMap[o.exam_id]||'(removed)')) : (o.scope==='assignment' ? ('Assignment: '+esc(asMap[o.assignment_id]||'(removed)')) : ('Graded quiz — chapter '+o.quiz_chapter));
+        var bits=[];
+        if(o.extra_attempts){ bits.push('+'+o.extra_attempts+' attempt'+(Number(o.extra_attempts)===1?'':'s')); }
+        if(o.new_deadline){ bits.push('due '+new Date(o.new_deadline).toLocaleString()); }
+        if(o.new_opens_at){ bits.push('opens '+new Date(o.new_opens_at).toLocaleString()); }
+        return '<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;"><div><div style="font-weight:600;color:var(--text-bright);font-size:13px;">'+what+'</div><div style="font-size:12px;color:var(--text-muted);">'+esc(bits.join(' · ')||'no changes')+(o.note?(' · '+esc(o.note)):'')+'</div></div><button class="btn btn-danger btn-sm" data-ovdel="'+o.id+'">Remove</button></div>';
+      }).join('');
+      Array.prototype.forEach.call(host.querySelectorAll('[data-ovdel]'), function(b){ b.addEventListener('click', function(){ sb.from('it_overrides').delete().eq('id',b.getAttribute('data-ovdel')).then(function(){ loadList(); }); }); });
+    });
+  }
+  loadList();
+  $('ovSave').addEventListener('click', function(){
+    var scope=$('ovScope').value;
+    var row={ course_id:courseId, student_id:studentId, scope:scope,
+      extra_attempts: parseInt($('ovExtra').value,10)||0,
+      new_deadline: $('ovDeadline').value ? localToIso($('ovDeadline').value) : null,
+      new_opens_at: $('ovOpens').value ? localToIso($('ovOpens').value) : null,
+      note: $('ovNote').value.trim()||null, created_by: State.user.id, updated_at:new Date().toISOString() };
+    var delq = sb.from('it_overrides').delete().eq('course_id',courseId).eq('student_id',studentId).eq('scope',scope);
+    if(scope==='quiz'){ row.quiz_chapter=parseInt($('ovChapter').value,10)||1; delq=delq.eq('quiz_chapter',row.quiz_chapter); }
+    else if(scope==='exam'){ row.exam_id=$('ovTarget').value||null; if(!row.exam_id){ $('ovMsg').textContent='Select an exam.'; $('ovMsg').className='msg err'; return; } delq=delq.eq('exam_id',row.exam_id); }
+    else { row.assignment_id=$('ovTarget').value||null; if(!row.assignment_id){ $('ovMsg').textContent='Select an assignment.'; $('ovMsg').className='msg err'; return; } delq=delq.eq('assignment_id',row.assignment_id); }
+    $('ovSave').disabled=true;
+    delq.then(function(){
+      sb.from('it_overrides').insert(row).then(function(res){
+        $('ovSave').disabled=false;
+        if(res.error){ $('ovMsg').textContent=res.error.message; $('ovMsg').className='msg err'; return; }
+        $('ovMsg').textContent='Granted.'; $('ovMsg').className='msg ok'; loadList();
+      });
+    });
+  });
+}
+
 /* ====================================================================
    PEOPLE (admin only) — grant / revoke instructor access
    ==================================================================== */
@@ -3586,30 +3671,38 @@ function startGradedQuiz(chapter) {
   // FAIL-OPEN deadline check. If the deadlines table does not exist yet, or the
   // query errors for any reason, we proceed exactly as before (no deadline). The
   // quiz can therefore never be blocked by this feature being half-deployed.
-  var proceed = function (closesAt) { startGradedQuizConfirmed(chapter, closesAt); };
+  var proceed = function (closesAt, extraAtt) { startGradedQuizConfirmed(chapter, closesAt, extraAtt||0); };
   try {
-    sb.from('it_quiz_deadlines').select('opens_at,closes_at')
-      .eq('course_id', courseId).eq('chapter', chapter).maybeSingle()
-      .then(function (dl) {
-        var closesAt = null, opensAt = null;
-        if (dl && !dl.error && dl.data) {
-          if (dl.data.closes_at) { closesAt = new Date(dl.data.closes_at).getTime(); }
-          if (dl.data.opens_at) { opensAt = new Date(dl.data.opens_at).getTime(); }
-        }
-        if (opensAt !== null && Date.now() < opensAt) {
-          area.innerHTML = errCard('The Chapter ' + chapter + ' quiz opens on ' + new Date(opensAt).toLocaleString() + '. Please come back then.');
-          return;
-        }
-        if (closesAt !== null && Date.now() > closesAt) {
-          area.innerHTML = errCard('The Chapter ' + chapter + ' quiz closed on ' + new Date(closesAt).toLocaleString() + '. It can no longer be taken. You can review the questions you missed using "Review missed questions".');
-          return;
-        }
-        proceed(closesAt);
-      }, function () { proceed(null); });
-  } catch (e) { proceed(null); }
+    Promise.all([
+      sb.from('it_quiz_deadlines').select('opens_at,closes_at').eq('course_id', courseId).eq('chapter', chapter).maybeSingle(),
+      sb.from('it_overrides').select('extra_attempts,new_opens_at,new_deadline').eq('course_id', courseId).eq('student_id', uid).eq('scope','quiz').eq('quiz_chapter', chapter).maybeSingle()
+    ]).then(function (rs) {
+      var dl = rs[0]; var ov = (rs[1] && !rs[1].error) ? rs[1].data : null;
+      var closesAt = null, opensAt = null, extra = 0;
+      if (dl && !dl.error && dl.data) {
+        if (dl.data.closes_at) { closesAt = new Date(dl.data.closes_at).getTime(); }
+        if (dl.data.opens_at) { opensAt = new Date(dl.data.opens_at).getTime(); }
+      }
+      if (ov) {
+        extra = ov.extra_attempts ? Number(ov.extra_attempts) : 0;
+        if (ov.new_deadline) { closesAt = new Date(ov.new_deadline).getTime(); }
+        if (ov.new_opens_at) { opensAt = new Date(ov.new_opens_at).getTime(); }
+      }
+      if (opensAt !== null && Date.now() < opensAt) {
+        area.innerHTML = errCard('The Chapter ' + chapter + ' quiz opens on ' + new Date(opensAt).toLocaleString() + '. Please come back then.');
+        return;
+      }
+      if (closesAt !== null && Date.now() > closesAt) {
+        area.innerHTML = errCard('The Chapter ' + chapter + ' quiz closed on ' + new Date(closesAt).toLocaleString() + '. It can no longer be taken. You can review the questions you missed using "Review missed questions".');
+        return;
+      }
+      proceed(closesAt, extra);
+    }, function () { proceed(null, 0); });
+  } catch (e) { proceed(null, 0); }
 }
 
-function startGradedQuizConfirmed(chapter, closesAt) {
+function startGradedQuizConfirmed(chapter, closesAt, extraAtt) {
+  var maxAtt = QUIZ_MAX_ATTEMPTS + (extraAtt?Number(extraAtt):0);
   var area = $('practiceArea');
   var uid = State.user ? State.user.id : null;
   var courseId = State.payCourseId || State.selfCourseId;
@@ -3625,8 +3718,8 @@ function startGradedQuizConfirmed(chapter, closesAt) {
   function afterPrior(prior){
     var used = prior && prior.quiz_attempts ? Number(prior.quiz_attempts) : 0;
     var bestPrior = prior && prior.quiz_score !== null && prior.quiz_score !== undefined ? Number(prior.quiz_score) : null;
-    if (used >= QUIZ_MAX_ATTEMPTS) {
-      area.innerHTML = errCard('You have used all ' + QUIZ_MAX_ATTEMPTS + ' attempts for the Chapter ' + chapter + ' quiz.' + (bestPrior !== null ? ' Your recorded score is ' + Math.round(bestPrior * 100) + '%.' : ''));
+    if (used >= maxAtt) {
+      area.innerHTML = errCard('You have used all ' + maxAtt + ' attempt' + (maxAtt===1?'':'s') + ' for the Chapter ' + chapter + ' quiz.' + (bestPrior !== null ? ' Your recorded score is ' + Math.round(bestPrior * 100) + '%.' : ''));
       return;
     }
     drawAndStart(used, bestPrior);
@@ -4159,16 +4252,19 @@ function loadMyAssignments(){
     if(ids.length===0){ host.innerHTML='<div class="card empty">You are not enrolled in a course with assignments yet.</div>'; return; }
     Promise.all([
       sb.from('it_assignments').select('*').in('course_id',ids).eq('is_published',true).order('created_at',{ascending:false}),
-      sb.from('it_submissions').select('*').eq('student_id',State.user.id)
+      sb.from('it_submissions').select('*').eq('student_id',State.user.id),
+      sb.from('it_overrides').select('assignment_id,new_deadline').eq('student_id',State.user.id).eq('scope','assignment')
     ]).then(function(res){
       var asgs=res[0].data?res[0].data:[];
       var subs=res[1].data?res[1].data:[];
+      var dueOvr={}; ((res[2]&&res[2].data)?res[2].data:[]).forEach(function(o){ if(o.assignment_id&&o.new_deadline){ dueOvr[o.assignment_id]=o.new_deadline; } });
       var subBy={}; subs.forEach(function(s){ subBy[s.assignment_id]=s; });
       if(asgs.length===0){ host.innerHTML='<div class="card empty">No assignments posted yet.</div>'; return; }
       var html='';
       asgs.forEach(function(a){
         var s=subBy[a.id];
-        var due=a.due_at?('Due '+new Date(a.due_at).toLocaleString()):'No due date';
+        var effDue=dueOvr[a.id]||a.due_at;
+        var due=effDue?('Due '+new Date(effDue).toLocaleString()+(dueOvr[a.id]?' (extended for you)':'')):'No due date';
         var graded = s && s.score!==null && s.score!==undefined;
         html+='<div class="card" style="margin-bottom:12px;">'+
           '<div style="font-size:16px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
@@ -4415,13 +4511,15 @@ function loadMyExams() {
     Promise.all([
       sb.from('it_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at,proctored,camera_mode,random_per_student,random_recipe').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
       sb.from('it_attempts').select('exam_id,item_id,points_earned,graded_at,submitted_value').eq('student_id', uid).not('exam_id','is',null),
-      sb.from('it_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid)
+      sb.from('it_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid),
+      sb.from('it_overrides').select('exam_id,extra_attempts,new_opens_at,new_deadline').eq('student_id', uid).eq('scope','exam')
     ]).then(function(r) {
       var exams = r[0].data ? r[0].data : [];
       exams = exams.filter(function(e){ return e.kind==='midterm' || e.kind==='final'; });
       var attempts = r[1].data ? r[1].data : [];
       var accoms = r[2].data ? r[2].data : [];
       var accomByCourse = {}; accoms.forEach(function(a){ accomByCourse[a.course_id]=a; });
+      var ovrByExam = {}; ((r[3]&&r[3].data)?r[3].data:[]).forEach(function(o){ if(o.exam_id){ ovrByExam[o.exam_id]=o; } });
       if (exams.length === 0) { host.innerHTML = '<div class="card empty">No exams have been assigned yet.</div>'; return; }
       // count graded SITTINGS per exam = graded attempts on that exam's first item
       var sittingsBy = {}; var lastPts = {};
@@ -4459,18 +4557,22 @@ function loadMyExams() {
         var sittings = sittingsBy[e.id]||0;
         var acc = accomByCourse[e.course_id];
         var baseAtt = (e.max_attempts===null||e.max_attempts===undefined)?1:Number(e.max_attempts);
-        var allowed = baseAtt===0 ? 0 : baseAtt + (acc?Number(acc.extra_attempts):0);
+        var ovr = ovrByExam[e.id];
+        var extraOvr = ovr && ovr.extra_attempts ? Number(ovr.extra_attempts) : 0;
+        var allowed = baseAtt===0 ? 0 : baseAtt + (acc?Number(acc.extra_attempts):0) + extraOvr;
+        var effOpens = (ovr && ovr.new_opens_at) ? ovr.new_opens_at : e.opens_at;
+        var effCloses = (ovr && ovr.new_deadline) ? ovr.new_deadline : e.closes_at;
         var now = Date.now();
-        var notOpen = e.opens_at && now < new Date(e.opens_at).getTime();
-        var closed = e.closes_at && now > new Date(e.closes_at).getTime();
+        var notOpen = effOpens && now < new Date(effOpens).getTime();
+        var closed = effCloses && now > new Date(effCloses).getTime();
         var attemptsLeft = (allowed===0) ? 'unlimited' : Math.max(0, allowed - sittings);
         var tmin = e.time_limit_minutes ? (acc && Number(acc.time_multiplier)!==1 ? Math.round(e.time_limit_minutes*Number(acc.time_multiplier)) : e.time_limit_minutes) : null;
         var statusHtml, action;
-        if (notOpen) { statusHtml='<span class="tag dim">Opens '+new Date(e.opens_at).toLocaleString()+'</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Not open</button>'; }
+        if (notOpen) { statusHtml='<span class="tag dim">Opens '+new Date(effOpens).toLocaleString()+'</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Not open</button>'; }
         else if (closed) { statusHtml='<span class="tag rose">Closed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Closed</button>'; }
         else if (allowed!==0 && sittings>=allowed) {
           var pctS = e.total_points && earnedBy[e.id]!==undefined ? Math.round((earnedBy[e.id]/(e.total_points*Math.max(1,sittings)))*100) : null;
-          var canReview = (e.closes_at && now > new Date(e.closes_at).getTime()) || (!e.closes_at && sittings>0);
+          var canReview = (effCloses && now > new Date(effCloses).getTime()) || (!effCloses && sittings>0);
           var reviewBtn = canReview ? ' <button class="btn btn-ghost btn-sm" data-review="'+e.id+'">Review answers</button>' : '';
           statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>'+reviewBtn;
         }
