@@ -271,6 +271,7 @@
       <div class="nav-item" data-view="myassignments"><span class="ico">&#128206;</span> Assignments</div>
       <div class="nav-item" data-view="mygrades"><span class="ico">&#127891;</span> My Grades</div>
       <div class="nav-item" data-view="progress"><span class="ico">&#128202;</span> My Progress</div>
+      <div class="nav-item" data-view="ask"><span class="ico">&#128172;</span> Ask a Question</div>
     </div>
     <div class="nav-group hidden" id="teachGroup">
       <div class="nav-group-label">Teach</div>
@@ -284,12 +285,14 @@
       <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
       <div class="nav-item" data-view="assignments"><span class="ico">&#128206;</span> Assignments</div>
       <div class="nav-item" data-view="grading"><span class="ico">&#9999;</span> Grade Written</div>
+      <div class="nav-item" data-view="flags"><span class="ico">&#128681;</span> Flags &amp; Questions</div>
     </div>
     <div class="nav-group hidden" id="adminGroup">
       <div class="nav-group-label">Administer</div>
       <div class="nav-item" data-view="platform"><span class="ico">&#9881;</span> Platform &amp; Pricing</div>
       <div class="nav-item" data-view="people"><span class="ico">&#128081;</span> Instructors</div>
       <div class="nav-item" data-view="subscriptions"><span class="ico">&#128179;</span> Subscriptions</div>
+      <div class="nav-item" data-view="reviews"><span class="ico">&#128227;</span> Review Inbox</div>
       <div class="nav-item" data-view="diagnostics"><span class="ico">&#128274;</span> Diagnostics</div>
     </div>
     <div class="side-foot">
@@ -387,6 +390,12 @@
       <div class="card" style="padding:6px 6px 2px;"><table class="tbl" id="attemptsTbl"><thead><tr><th>Item</th><th>Chapter</th><th>Result</th><th>Points</th><th>When</th></tr></thead><tbody></tbody></table></div>
       <h3 style="font-size:22px;margin:24px 0 12px;">Arena results</h3>
       <div class="card" style="padding:6px 6px 2px;"><table class="tbl" id="arenaTbl"><thead><tr><th>Arena</th><th>Outcome</th><th>Score</th><th>When</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section id="view-ask" class="hidden">
+      <h1 class="page-title">Ask a Question</h1>
+      <div class="page-sub">Send a question to your instructor. The platform team may review it and route it to the right professor.</div>
+      <div id="askBody" style="margin-top:16px;"></div>
     </section>
 
     </div>
@@ -625,6 +634,9 @@ function enterApp(user){
   maybeCreateProfRequest();
   maybeJoinFromSignup();
   resolveAccess().then(function(){
+    return loadPlatformSettings();   // know self_study_enabled before provisioning
+  }).then(function(){
+    applySelfStudyVisibility();
     // student self-study provisioning (own course for practice/progress)
     return ensureProfileAndCourse();
   }).then(function(){
@@ -678,7 +690,47 @@ function enterGuest(){
 function loadPlatformSettings(){
   return sb.from('it_platform_settings').select('*').eq('id',1).maybeSingle().then(function(res){
     State.settings = res.data ? res.data : null;
+    if(typeof applySelfStudyVisibility==='function'){ applySelfStudyVisibility(); }
   });
+}
+/* ---- Super-admin: hide/show students' auto-created Self-Study courses ---- */
+function isSuperAdmin(){ return !!(State.user && State.user.email && State.user.email.toLowerCase()==='sharmaaa9@yahoo.com'); }
+function getHideSelfStudy(){ try{ var v=localStorage.getItem('it_hideSelfStudy'); return v===null ? true : v==='1'; }catch(e){ return true; } }
+function setHideSelfStudy(on){ try{ localStorage.setItem('it_hideSelfStudy', on?'1':'0'); }catch(e){} }
+function selfStudyEnabled(){ return !(State.settings && State.settings.self_study_enabled === false); }
+function applySelfStudyVisibility(){
+  var on = selfStudyEnabled();
+  var nav = document.querySelector('.nav-item[data-view="practice"]');
+  if(nav){ if(on){ nav.classList.remove('hidden'); } else { nav.classList.add('hidden'); } }
+  if(!on && currentView==='practice'){ switchView('home'); }
+}
+function coursesForDisplay(){
+  var list = State.courses || [];
+  if(!selfStudyEnabled()){                        // platform-wide OFF: hide for everyone
+    list = list.filter(function(c){ return (c.title||'') !== 'Self-Study'; });
+  } else if(isSuperAdmin() && getHideSelfStudy()){ // admin-view declutter only
+    list = list.filter(function(c){ return (c.title||'') !== 'Self-Study'; });
+  }
+  return list;
+}
+function rebuildCoursePicker(){
+  var sel=$('coursePick'); if(!sel){ return; }
+  sel.innerHTML='';
+  var list=coursesForDisplay();
+  var names=State.courseOwnerNames||{};
+  if(list.length===0){
+    var e=document.createElement('option'); e.value=''; e.textContent='(no courses shown)'; sel.appendChild(e);
+    State.teachCourseId=null; return;
+  }
+  list.forEach(function(c){
+    var o=document.createElement('option'); o.value=c.id;
+    var label=c.title+(c.term?(' \u00b7 '+c.term):'');
+    if(isSuperAdmin() && c.owner_id!==State.user.id){ label+='  \u2014 '+(names[c.owner_id]||'another professor'); }
+    o.textContent=label; sel.appendChild(o);
+  });
+  var vis=false; for(var i=0;i<list.length;i++){ if(list[i].id===State.teachCourseId){ vis=true; break; } }
+  if(!State.teachCourseId || !vis){ State.teachCourseId=list[0].id; }
+  sel.value=State.teachCourseId;
 }
 function loadCourses(){
   // The pinned super-admin sees EVERY course on the platform (read-everywhere +
@@ -691,23 +743,8 @@ function loadCourses(){
     State.courses = res.data ? res.data : [];
     var ownerNames = {};
     var finish = function(){
-      var sel=$('coursePick'); sel.innerHTML='';
-      if(State.courses.length===0){
-        var o=document.createElement('option'); o.value=''; o.textContent='(no courses yet)'; sel.appendChild(o);
-        State.teachCourseId=null;
-      } else {
-        State.courses.forEach(function(c){
-          var o=document.createElement('option'); o.value=c.id;
-          var label=c.title+(c.term?(' · '+c.term):'');
-          if(isPlatformAdmin && c.owner_id !== State.user.id){
-            var who = ownerNames[c.owner_id] ? ownerNames[c.owner_id] : 'another professor';
-            label += '  — ' + who;
-          }
-          o.textContent=label; sel.appendChild(o);
-        });
-        if(!State.teachCourseId || !findCourse(State.teachCourseId)){ State.teachCourseId=State.courses[0].id; }
-        sel.value=State.teachCourseId;
-      }
+      State.courseOwnerNames = ownerNames;   // cache for later picker rebuilds
+      rebuildCoursePicker();                 // honors the Self-Study hide toggle
     };
     if(isPlatformAdmin && State.courses.length){
       var ownerIds = State.courses.map(function(c){ return c.owner_id; }).filter(function(v,i,a){ return v && a.indexOf(v)===i; });
@@ -724,7 +761,7 @@ $('coursePick').addEventListener('change', function(){ State.teachCourseId=$('co
 /* ====================================================================
    NAV
    ==================================================================== */
-var STUDENT_VIEWS = ['home','myannounce','mymaterials','chapters','arenas','practice','myexams','myassignments','mygrades','progress'];
+var STUDENT_VIEWS = ['home','myannounce','mymaterials','chapters','arenas','practice','myexams','myassignments','mygrades','progress','ask'];
 var VIEW_META = {
   home:['Home','Your strategic-thinking workspace.',false],
   myannounce:['Announcements','The latest announcements from your instructors.',false],
@@ -749,7 +786,10 @@ var VIEW_META = {
   grading:['Grade Written','Review and finalize written answers, with optional AI assistance.',true],
   subscriptions:['Subscriptions','Manage paid access for this course.',true],
   platform:['Platform & Pricing','Global price, Stripe link, and author bio.',false],
-  people:['Instructors','Grant or revoke instructor access.',false]
+  people:['Instructors','Grant or revoke instructor access.',false],
+  ask:['Ask a Question','Send a question to your instructor.',false],
+  flags:['Flags & Questions','Items forwarded to you, plus student questions in your courses.',false],
+  reviews:['Review Inbox','Student questions and content flags across every course. Forward to the owning professor.',false]
 };
 var currentView='home';
 Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it){
@@ -760,9 +800,10 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
   });
 });
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
-var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading'];
-var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics'];
+var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading','flags'];
+var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics','reviews'];
 function viewAllowed(view){
+  if(view==='practice' && !selfStudyEnabled()){ return false; }
   if(isStudentView(view)){ return true; }
   if(ADMIN_VIEWS.indexOf(view)>=0){ return State.role==='admin'; }
   if(INSTRUCTOR_VIEWS.indexOf(view)>=0){ return State.role==='instructor' || State.role==='admin'; }
@@ -818,6 +859,7 @@ function switchView(view){
     if(view==='myassignments'){ loadMyAssignments(); }
     if(view==='mygrades'){ loadMyGrades(); }
     if(view==='practice'){ var pa=$('practiceArea'); if(pa && pa.innerHTML.trim()===''){ loadNewQuestion(); } }
+    if(view==='ask'){ loadAskView(); }
     return;
   }
   rerenderCurrentView();
@@ -838,6 +880,8 @@ function rerenderCurrentView(){
   else if(currentView==='subscriptions'){ renderSubscriptions(host); }
   else if(currentView==='platform'){ renderPlatform(host); }
   else if(currentView==='people'){ renderPeople(host); }
+  else if(currentView==='flags'){ renderFlags(host); }
+  else if(currentView==='reviews'){ renderReviews(host); }
 }
 function needCourse(host){
   if(!State.teachCourseId){ host.innerHTML='<div class="card empty">Create a course first (Courses tab).</div>'; return false; }
@@ -887,22 +931,32 @@ function stat(num,label){ return '<div class="stat"><div class="s-num">'+esc(num
    COURSES
    ==================================================================== */
 function renderCourses(host){
-  var html='<div style="margin-bottom:18px;"><button class="btn btn-primary" id="newCourseBtn">+ New course</button></div>';
-  if(State.courses.length===0){ html+='<div class="card empty">No courses yet. Create one to get started.</div>'; }
+  var list = coursesForDisplay();
+  var hiddenCount = isSuperAdmin() ? ((State.courses||[]).length - list.length) : 0;
+  var toggle = isSuperAdmin()
+    ? '<label style="display:inline-flex;align-items:center;gap:8px;margin-left:14px;font-size:13px;color:var(--text-muted);cursor:pointer;"><input type="checkbox" id="toggleSelfStudy" '+(getHideSelfStudy()?'checked':'')+'> Hide students\u2019 Self-Study courses</label>'
+    : '';
+  var hiddenNote = hiddenCount>0 ? '<span style="font-size:12px;color:var(--text-subtle);margin-left:6px;">'+hiddenCount+' Self-Study course'+(hiddenCount===1?'':'s')+' hidden</span>' : '';
+  var html='<div style="margin-bottom:18px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;"><button class="btn btn-primary" id="newCourseBtn">+ New course</button>'+toggle+hiddenNote+'</div>';
+  if(list.length===0){ html+='<div class="card empty">'+(hiddenCount>0?'All courses are Self-Study courses, which are currently hidden. Untick the box above to show them.':'No courses yet. Create one to get started.')+'</div>'; }
   else {
     html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Title</th><th>Term</th><th>Join code</th><th>Access</th><th>Weights (R/Q/A/M/F)</th><th></th></tr></thead><tbody>';
-    State.courses.forEach(function(c){
+    list.forEach(function(c){
       var w=[c.weight_reading,c.weight_quizzes,c.weight_arenas,c.weight_midterm,c.weight_final].map(function(x){return Math.round((x?x:0)*100);}).join('/');
-      html+='<tr><td>'+esc(c.title)+'</td><td>'+esc(c.term||'-')+'</td><td><span class="pill-code">'+esc(c.join_code)+'</span></td>'+
+      var ssTag = (c.title==='Self-Study') ? ' <span class="tag dim">self-study</span>' : '';
+      html+='<tr><td>'+esc(c.title)+ssTag+'</td><td>'+esc(c.term||'-')+'</td><td><span class="pill-code">'+esc(c.join_code)+'</span></td>'+
         '<td>'+(c.requires_payment?'<span class="tag amber">Paid</span>':'<span class="tag green">Free</span>')+'</td>'+
         '<td class="mono">'+w+'</td>'+
-        '<td><button class="btn btn-ghost btn-sm" data-edit="'+c.id+'">Edit</button></td></tr>';
+        '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-edit="'+c.id+'">Edit</button>'+((isSuperAdmin() && c.owner_id!==State.user.id && c.title!=='Self-Study')?'<button class="btn btn-ghost btn-sm" data-flagcourse="'+c.id+'">Flag to prof</button>':'')+'</td></tr>';
     });
     html+='</tbody></table></div>';
   }
   host.innerHTML=html;
   $('newCourseBtn').addEventListener('click', function(){ openCourseModal(null); });
+  var tog=$('toggleSelfStudy');
+  if(tog){ tog.addEventListener('change', function(){ setHideSelfStudy(tog.checked); rebuildCoursePicker(); renderCourses(host); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-edit]'), function(b){ b.addEventListener('click', function(){ openCourseModal(b.getAttribute('data-edit')); }); });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-flagcourse]'), function(b){ b.addEventListener('click', function(){ var c=findCourse(b.getAttribute('data-flagcourse')); if(c){ openFlagModal(c,'content',{type:'course',id:c.id,label:c.title}); } }); });
 }
 function randomCode(){ var s='trade-'; var a='abcdefghijklmnopqrstuvwxyz0123456789'; for(var i=0;i<5;i++){ s+=a[Math.floor(Math.random()*a.length)]; } return s; }
 function openCourseModal(courseId){
@@ -2727,6 +2781,10 @@ function renderPlatform(host){
     '<div class="field"><label>Stripe payment link</label><input id="pfStripe" value="'+esc(s.stripe_link||'')+'" placeholder="https://buy.stripe.com/..."></div>'+
     '<div class="field"><label>Notify email (where new professor requests are sent)</label><input id="pfNotify" value="'+esc(s.notify_email||'')+'" placeholder="you@macronations.com"></div>'+
     '<button class="btn btn-primary" id="pfSavePricing">Save pricing</button></div>'+
+    '<div class="card" style="max-width:680px;margin-bottom:18px;"><h3>Student features</h3>'+
+    '<label style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text-muted);cursor:pointer;"><input type="checkbox" id="pfSelfStudy" '+((s.self_study_enabled===false)?'':'checked')+'> Enable the Self-Study practice course for all users</label>'+
+    '<div style="font-size:12.5px;color:var(--text-subtle);margin:8px 0 12px;">When off, the Self-Study course and the Practice tab are hidden everywhere and no new ones are created. Existing practice data is kept and returns if you switch it back on.</div>'+
+    '<button class="btn btn-primary" id="pfSaveSelfStudy">Save</button></div>'+
     '<div class="card" style="max-width:680px;"><h3>Author bio &amp; photo</h3><div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Shown on the textbook’s “About the Author” page.</div>'+
     '<div class="field"><label>Author name</label><input id="pfName" value="'+esc(s.author_name||'')+'"></div>'+
     '<div class="field"><label>Subtitle (optional — leave blank to keep the founder line)</label><input id="pfSub" value="'+esc(s.author_subtitle||'')+'"></div>'+
@@ -2740,6 +2798,11 @@ function renderPlatform(host){
   $('pfSaveBio').addEventListener('click', function(){
     savePlatform({ author_name:$('pfName').value.trim(), author_subtitle:$('pfSub').value.trim(), author_photo_url:$('pfPhoto').value.trim(), author_bio_html:$('pfBio').value.trim() }, 'Bio saved.');
   });
+  $('pfSaveSelfStudy').addEventListener('click', function(){
+    var on=$('pfSelfStudy').checked;
+    savePlatform({ self_study_enabled: on }, on ? 'Self-Study enabled everywhere.' : 'Self-Study hidden everywhere.');
+    setTimeout(function(){ applySelfStudyVisibility(); rebuildCoursePicker(); }, 500);
+  });
 }
 function savePlatform(patch, okMsg){
   patch.id=1; patch.updated_by=State.user.id;
@@ -2748,6 +2811,194 @@ function savePlatform(patch, okMsg){
     if(res.error){ if(e){ e.textContent=res.error.message; e.className='msg err'; } return; }
     if(e){ e.textContent=okMsg; e.className='msg ok'; }
     loadPlatformSettings();
+  });
+}
+
+
+/* ====================================================================
+   FLAGS / REVIEW CHANNEL — student questions + super-admin content flags
+   routed to the concerned professor (in-app + email).
+   ==================================================================== */
+function openFlagModal(course, kind, target){
+  var isContent = kind==='content';
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:520px;">'+
+    '<h2 style="margin-bottom:6px;">'+(isContent?'Flag to professor':'Ask a question')+'</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">'+(isContent?('Course: <b>'+esc(course.title)+'</b>'+((target&&target.label)?(' &middot; '+esc(target.label)):'')):'')+'</div>'+
+    '<div id="flagMsg" class="msg"></div>'+
+    '<div class="field"><label>Subject</label><input id="flagSubject" placeholder="Short summary"></div>'+
+    '<div class="field"><label>Details</label><textarea id="flagBody" style="min-height:110px;" placeholder="Describe the question or the content issue..."></textarea></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="flagCancel">Cancel</button><button class="btn btn-primary" id="flagSend">Send</button></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  $('flagCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  $('flagSend').addEventListener('click', function(){
+    var body=$('flagBody').value.trim();
+    if(!body){ $('flagMsg').textContent='Please add some details.'; $('flagMsg').className='msg err'; return; }
+    submitFlag({
+      course_id: course.id, owner_id: course.owner_id, raised_by: State.user.id,
+      raised_role: (State.role==='admin'?'admin':(State.role==='instructor'?'instructor':'student')),
+      kind: kind, target_type: target?target.type:'course', target_id: target?String(target.id):String(course.id),
+      target_label: target?target.label:course.title, subject: $('flagSubject').value.trim(), body: body,
+      status: (kind==='content'?'forwarded':'open')
+    }, function(err){
+      if(err){ $('flagMsg').textContent=err; $('flagMsg').className='msg err'; return; }
+      close();
+      if(kind==='content'){ alert('Flag sent to the professor.'); }
+    });
+  });
+}
+function submitFlag(row, cb){
+  row.updated_at=new Date().toISOString();
+  sb.from('it_flags').insert(row).select('id').single().then(function(res){
+    if(res.error){ if(cb){ cb(res.error.message); } return; }
+    if(row.kind==='content' && res.data){ sb.functions.invoke('it-notify-flag',{ body:{ flag_id:res.data.id } }).then(function(){}, function(){}); }
+    if(cb){ cb(null, res.data); }
+  });
+}
+
+/* ---- Student: Ask a Question ---- */
+function loadAskView(){
+  var host=$('askBody'); if(!host){ return; }
+  if(!State.user){ host.innerHTML='<div class="card empty">Sign in to ask a question.</div>'; return; }
+  host.innerHTML=loadingCard();
+  var uid=State.user.id;
+  sb.from('it_enrollments').select('course_id, it_courses(title,owner_id)').eq('student_id',uid).eq('status','active').then(function(enr){
+    var rows=enr.data?enr.data:[];
+    var courses=rows.filter(function(r){ return r.it_courses && r.it_courses.owner_id!==uid; })
+                    .map(function(r){ return { id:r.course_id, title:r.it_courses.title, owner_id:r.it_courses.owner_id }; });
+    var opts=courses.map(function(c){ return '<option value="'+c.id+'">'+esc(c.title)+'</option>'; }).join('');
+    var form=courses.length
+      ? '<div class="card" style="max-width:640px;margin-bottom:18px;"><h3>New question</h3><div id="askMsg" class="msg"></div>'+
+        '<div class="field"><label>Course</label><select id="askCourse">'+opts+'</select></div>'+
+        '<div class="field"><label>Subject</label><input id="askSubject" placeholder="Short summary"></div>'+
+        '<div class="field"><label>Your question</label><textarea id="askText" style="min-height:110px;"></textarea></div>'+
+        '<button class="btn btn-primary" id="askSend">Send question</button></div>'
+      : '<div class="card empty">You are not enrolled in a course with an instructor yet. Join a course from Home to ask a question.</div>';
+    host.innerHTML=form+'<h3 style="font-size:20px;margin:6px 0 10px;">Your questions</h3><div id="askList">'+loadingCard()+'</div>';
+    if(courses.length){
+      var cmap={}; courses.forEach(function(c){ cmap[c.id]=c; });
+      $('askSend').addEventListener('click', function(){
+        var text=$('askText').value.trim();
+        if(!text){ $('askMsg').textContent='Please write your question.'; $('askMsg').className='msg err'; return; }
+        var c=cmap[$('askCourse').value];
+        submitFlag({ course_id:c.id, owner_id:c.owner_id, raised_by:uid, raised_role:'student', kind:'question',
+                     target_type:'course', target_id:String(c.id), target_label:c.title,
+                     subject:$('askSubject').value.trim(), body:text, status:'open' }, function(err){
+          if(err){ $('askMsg').textContent=err; $('askMsg').className='msg err'; return; }
+          $('askMsg').textContent='Sent. Your instructor will see it.'; $('askMsg').className='msg ok';
+          $('askText').value=''; $('askSubject').value=''; loadAskList(uid);
+        });
+      });
+    }
+    loadAskList(uid);
+  });
+}
+function loadAskList(uid){
+  var host=$('askList'); if(!host){ return; }
+  sb.from('it_flags').select('*').eq('raised_by',uid).order('created_at',{ascending:false}).then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ host.innerHTML='<div class="card empty">No questions yet.</div>'; return; }
+    var html='';
+    rows.forEach(function(f){
+      var badge=f.status==='resolved'?'<span class="tag green">answered</span>':'<span class="tag amber">open</span>';
+      html+='<div class="card" style="margin-bottom:10px;">'+
+        '<div style="display:flex;justify-content:space-between;gap:10px;"><div style="font-weight:600;color:var(--text-bright);">'+esc(f.subject||'(no subject)')+'</div>'+badge+'</div>'+
+        '<div style="font-size:13px;color:var(--text-muted);margin:6px 0;white-space:pre-wrap;">'+esc(f.body||'')+'</div>'+
+        (f.prof_reply?('<div style="font-size:13px;color:var(--text-bright);border-left:3px solid var(--green);padding-left:10px;margin-top:8px;white-space:pre-wrap;"><b>Instructor:</b> '+esc(f.prof_reply)+'</div>'):'')+
+        '<div style="font-size:11px;color:var(--text-subtle);margin-top:8px;">'+esc(f.target_label||'')+' &middot; '+esc(new Date(f.created_at).toLocaleString())+'</div></div>';
+    });
+    host.innerHTML=html;
+  });
+}
+
+/* ---- Super admin: Review Inbox ---- */
+function renderReviews(host){
+  if(State.role!=='admin'){ host.innerHTML='<div class="card empty">Administrator access required.</div>'; return; }
+  host.innerHTML=loadingCard();
+  sb.from('it_flags').select('*').order('created_at',{ascending:false}).then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ host.innerHTML='<div class="card empty">No questions or flags yet.</div>'; return; }
+    var courseIds=rows.map(function(r){return r.course_id;}).filter(function(v,i,a){return a.indexOf(v)===i;});
+    var ownerIds=rows.map(function(r){return r.owner_id;}).filter(function(v,i,a){return v&&a.indexOf(v)===i;});
+    Promise.all([
+      courseIds.length?sb.from('it_courses').select('id,title,owner_id').in('id',courseIds):Promise.resolve({data:[]}),
+      ownerIds.length?sb.from('it_profiles').select('id,email,full_name').in('id',ownerIds):Promise.resolve({data:[]})
+    ]).then(function(r){
+      var ct={}; (r[0].data||[]).forEach(function(c){ ct[c.id]=c; });
+      var pn={}; (r[1].data||[]).forEach(function(pp){ pn[pp.id]=pp.full_name||pp.email; });
+      var open=rows.filter(function(f){return f.status!=='resolved';});
+      var html='<div style="margin-bottom:14px;color:var(--text-muted);font-size:13px;">'+rows.length+' item'+(rows.length===1?'':'s')+' &middot; '+open.length+' open</div>';
+      rows.forEach(function(f){
+        var c=ct[f.course_id]||{}; var prof=pn[f.owner_id]||'(unknown professor)';
+        var kindTag=f.kind==='content'?'<span class="tag violet">content</span>':'<span class="tag blue">question</span>';
+        var statusTag=f.status==='resolved'?'<span class="tag green">resolved</span>':(f.status==='forwarded'?'<span class="tag amber">forwarded</span>':'<span class="tag dim">open</span>');
+        html+='<div class="card" style="margin-bottom:12px;">'+
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><div style="font-weight:600;color:var(--text-bright);">'+esc(f.subject||'(no subject)')+'</div><div>'+kindTag+' '+statusTag+'</div></div>'+
+          '<div style="font-size:12px;color:var(--text-subtle);margin:4px 0;">'+esc(c.title||'course')+' &middot; professor: '+esc(prof)+' &middot; re: '+esc(f.target_label||'course')+'</div>'+
+          '<div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap;margin:6px 0;">'+esc(f.body||'')+'</div>'+
+          (f.admin_note?('<div style="font-size:12.5px;color:var(--text-bright);border-left:3px solid var(--amber);padding-left:10px;margin:6px 0;white-space:pre-wrap;"><b>Your note:</b> '+esc(f.admin_note)+'</div>'):'')+
+          (f.prof_reply?('<div style="font-size:12.5px;color:var(--text-bright);border-left:3px solid var(--green);padding-left:10px;margin:6px 0;white-space:pre-wrap;"><b>Professor:</b> '+esc(f.prof_reply)+'</div>'):'')+
+          '<div class="inline-actions" style="margin-top:8px;">'+
+            (f.status!=='resolved'?'<button class="btn btn-primary btn-sm" data-fwd="'+f.id+'">Forward to professor</button>':'')+
+            (f.status!=='resolved'?'<button class="btn btn-ghost btn-sm" data-resolve="'+f.id+'">Mark resolved</button>':'')+
+          '</div></div>';
+      });
+      host.innerHTML=html;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-fwd]'), function(b){ b.addEventListener('click', function(){ forwardFlag(b.getAttribute('data-fwd')); }); });
+      Array.prototype.forEach.call(host.querySelectorAll('[data-resolve]'), function(b){ b.addEventListener('click', function(){ resolveFlag(b.getAttribute('data-resolve'), null, function(){ renderReviews(host); }); }); });
+    });
+  });
+}
+function forwardFlag(id){
+  var note=window.prompt('Add a note for the professor (optional), then OK to forward + email:');
+  if(note===null){ return; }
+  sb.from('it_flags').update({ status:'forwarded', admin_note:(note||null), updated_at:new Date().toISOString() }).eq('id',id).then(function(res){
+    if(res.error){ alert('Could not forward: '+res.error.message); return; }
+    sb.functions.invoke('it-notify-flag',{ body:{ flag_id:id } }).then(function(){}, function(){});
+    if(currentView==='reviews'){ renderReviews($('viewHost')); }
+  });
+}
+function resolveFlag(id, reply, done){
+  var patch={ status:'resolved', updated_at:new Date().toISOString() };
+  if(reply!==null && reply!==undefined){ patch.prof_reply=reply; }
+  sb.from('it_flags').update(patch).eq('id',id).then(function(res){
+    if(res.error){ alert('Could not update: '+res.error.message); return; }
+    if(done){ done(); }
+  });
+}
+
+/* ---- Professor: Flags & Questions ---- */
+function renderFlags(host){
+  if(State.role!=='instructor' && State.role!=='admin'){ host.innerHTML='<div class="card empty">Instructor access required.</div>'; return; }
+  host.innerHTML=loadingCard();
+  sb.from('it_flags').select('*').order('created_at',{ascending:false}).then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ host.innerHTML='<div class="card empty">No questions or flags for your courses yet.</div>'; return; }
+    var courseIds=rows.map(function(r){return r.course_id;}).filter(function(v,i,a){return a.indexOf(v)===i;});
+    (courseIds.length?sb.from('it_courses').select('id,title').in('id',courseIds):Promise.resolve({data:[]})).then(function(cr){
+      var ct={}; (cr.data||[]).forEach(function(c){ ct[c.id]=c.title; });
+      var html='';
+      rows.forEach(function(f){
+        var kindTag=f.kind==='content'?'<span class="tag violet">content</span>':'<span class="tag blue">student question</span>';
+        var statusTag=f.status==='resolved'?'<span class="tag green">resolved</span>':(f.status==='forwarded'?'<span class="tag amber">forwarded by admin</span>':'<span class="tag dim">open</span>');
+        html+='<div class="card" style="margin-bottom:12px;">'+
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><div style="font-weight:600;color:var(--text-bright);">'+esc(f.subject||'(no subject)')+'</div><div>'+kindTag+' '+statusTag+'</div></div>'+
+          '<div style="font-size:12px;color:var(--text-subtle);margin:4px 0;">'+esc(ct[f.course_id]||'course')+' &middot; re: '+esc(f.target_label||'course')+'</div>'+
+          '<div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap;margin:6px 0;">'+esc(f.body||'')+'</div>'+
+          (f.admin_note?('<div style="font-size:12.5px;color:var(--text-bright);border-left:3px solid var(--amber);padding-left:10px;margin:6px 0;white-space:pre-wrap;"><b>Admin note:</b> '+esc(f.admin_note)+'</div>'):'')+
+          (f.prof_reply?('<div style="font-size:12.5px;color:var(--text-bright);border-left:3px solid var(--green);padding-left:10px;margin:6px 0;white-space:pre-wrap;"><b>Your reply:</b> '+esc(f.prof_reply)+'</div>'):'')+
+          (f.status!=='resolved'?'<div class="inline-actions" style="margin-top:8px;"><button class="btn btn-primary btn-sm" data-reply="'+f.id+'">Reply &amp; resolve</button></div>':'')+
+          '</div>';
+      });
+      host.innerHTML=html;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-reply]'), function(b){ b.addEventListener('click', function(){
+        var reply=window.prompt('Your reply to the student / resolution note:');
+        if(reply===null){ return; }
+        resolveFlag(b.getAttribute('data-reply'), reply, function(){ renderFlags(host); });
+      }); });
+    });
   });
 }
 
@@ -2991,6 +3242,7 @@ function ensureProfileAndCourse() {
     if (anyRow) { State.selfCourseId = anyRow.course_id; if(!State.payCourseId){ State.payCourseId = anyRow.course_id; } return null; }
     // No ACTIVE enrollment (e.g., dropped from the only course): create / re-use a
     // personal self-study course so the student still has a working space.
+    if (!selfStudyEnabled()) { State.selfCourseId = null; return null; }  // Self-Study disabled platform-wide
     var code = 'self-' + uid.slice(0, 8);
     return sb.from('it_courses').insert({
       owner_id: uid, title: 'Self-Study', term: 'Personal', join_code: code
