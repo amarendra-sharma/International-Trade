@@ -235,7 +235,7 @@
         </div>
       </div>
       <div id="studentJoin">
-        <div class="field"><label>Course join code <span style="color:var(--text-subtle);text-transform:none;letter-spacing:0;">(optional — leave blank to study independently)</span></label><input id="authJoinCode" placeholder="trade-xxxxx"></div>
+        <div class="field"><label>Course join code <span id="joinCodeHint" style="color:var(--text-subtle);text-transform:none;letter-spacing:0;">(optional — leave blank to study independently)</span></label><input id="authJoinCode" placeholder="trade-xxxxx"></div>
       </div>
       <div id="profFields" class="hidden">
         <div class="field"><label>Institution</label><input id="authInstitution" placeholder="Binghamton University"></div>
@@ -799,6 +799,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
     switchView(it.getAttribute('data-view'));
   });
 });
+initSignupHint();
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
 var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading','flags'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics','reviews'];
@@ -1687,6 +1688,7 @@ function loadAssignmentsList(openFilesFor){
           '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px;">'+esc(due)+' \u00b7 '+a.points+' pts'+(a.is_published?'':' \u00b7 unpublished')+'</div></div>'+
           '<div class="inline-actions"><button class="btn btn-ghost btn-sm" data-grade="'+a.id+'" data-title="'+esc(a.title)+'" data-pts="'+a.points+'">Submissions &amp; grading</button>'+
           '<button class="btn btn-ghost btn-sm" data-files="'+a.id+'">Files</button>'+
+          '<button class="btn btn-ghost btn-sm" data-editasg="'+a.id+'">Edit / reschedule</button>'+
           '<button class="btn btn-ghost btn-sm" data-pubasg="'+a.id+'" data-on="'+(a.is_published?'1':'0')+'">'+(a.is_published?'Unpublish':'Publish')+'</button>'+
           '<button class="btn btn-danger btn-sm" data-delasg="'+a.id+'">Delete</button></div></div>'+
         '<div id="files-'+a.id+'" class="hidden" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"></div>'+
@@ -1698,6 +1700,9 @@ function loadAssignmentsList(openFilesFor){
     }); });
     Array.prototype.forEach.call($('asgList').querySelectorAll('[data-files]'), function(b){ b.addEventListener('click', function(){
       openAsgFiles(b.getAttribute('data-files'));
+    }); });
+    Array.prototype.forEach.call($('asgList').querySelectorAll('[data-editasg]'), function(b){ b.addEventListener('click', function(){
+      openAssignmentEditor(b.getAttribute('data-editasg'));
     }); });
     Array.prototype.forEach.call($('asgList').querySelectorAll('[data-pubasg]'), function(b){ b.addEventListener('click', function(){
       var on=b.getAttribute('data-on')==='1';
@@ -1843,18 +1848,14 @@ function openQuizDeadlines(){
     var sv=$('qdlSave'); if(sv){ sv.disabled=true; }
   }
 
-  sb.from('it_quiz_deadlines').select('chapter,closes_at').eq('course_id',State.teachCourseId).then(function(res){
+  sb.from('it_quiz_deadlines').select('chapter,opens_at,closes_at').eq('course_id',State.teachCourseId).then(function(res){
     if(res && res.error){ notInstalled(); return; }
-    var have={}; ((res && res.data) ? res.data : []).forEach(function(r){ have[r.chapter]=r.closes_at; });
-    var rowsHtml='';
+    var haveO={}, haveC={}; ((res && res.data) ? res.data : []).forEach(function(r){ haveO[r.chapter]=r.opens_at; haveC[r.chapter]=r.closes_at; });
+    var rowsHtml='<div style="display:flex;gap:10px;font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;"><span style="flex:1;"></span><span style="width:170px;">Opens</span><span style="width:170px;">Closes</span></div>';
     STUDENT_CHAPTERS.forEach(function(c){
-      var val='';
-      if(have[c.n]){
-        var d=new Date(have[c.n]); var pad=function(x){return (x<10?'0':'')+x;};
-        val=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
-      }
       rowsHtml+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><label style="flex:1;font-size:13px;">Ch '+c.n+' \u00b7 '+esc(c.title)+'</label>'+
-        '<input type="datetime-local" data-qdl-ch="'+c.n+'" value="'+val+'" style="font-size:13px;padding:5px 8px;"></div>';
+        '<input type="datetime-local" data-qdl-open="'+c.n+'" value="'+dtLocalValue(haveO[c.n])+'" style="font-size:13px;padding:5px 8px;width:170px;">'+
+        '<input type="datetime-local" data-qdl-ch="'+c.n+'" value="'+dtLocalValue(haveC[c.n])+'" style="font-size:13px;padding:5px 8px;width:170px;"></div>';
     });
     $('qdlBody').innerHTML=rowsHtml;
   }, function(){ notInstalled(); });
@@ -1862,12 +1863,14 @@ function openQuizDeadlines(){
   $('qdlSave').addEventListener('click', function(){
     var inputs=ov.querySelectorAll('[data-qdl-ch]');
     if(!inputs || inputs.length===0){ shut(); return; }
+    var byCh={};
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-qdl-open]'), function(inp){ var ch=parseInt(inp.getAttribute('data-qdl-open'),10); (byCh[ch]=byCh[ch]||{}).open=inp.value; });
+    Array.prototype.forEach.call(inputs, function(inp){ var ch=parseInt(inp.getAttribute('data-qdl-ch'),10); (byCh[ch]=byCh[ch]||{}).close=inp.value; });
     var ups=[], dels=[];
-    Array.prototype.forEach.call(inputs, function(inp){
-      var ch=parseInt(inp.getAttribute('data-qdl-ch'),10);
-      var v=inp.value;
-      if(v){ ups.push({ course_id:State.teachCourseId, chapter:ch, closes_at:new Date(v).toISOString(), updated_at:new Date().toISOString() }); }
-      else { dels.push(ch); }
+    Object.keys(byCh).forEach(function(k){
+      var ch=parseInt(k,10); var o=byCh[k].open, c=byCh[k].close;
+      if(!o && !c){ dels.push(ch); return; }
+      ups.push({ course_id:State.teachCourseId, chapter:ch, opens_at:(o?localToIso(o):null), closes_at:(c?localToIso(c):null) });
     });
     var btn=$('qdlSave'); btn.disabled=true; btn.textContent='Saving\u2026';
     var work=[];
@@ -3002,6 +3005,52 @@ function renderFlags(host){
   });
 }
 
+
+/* ---- Pre-login: honor the Self-Study switch on the sign-up hint ---- */
+function initSignupHint(){
+  var el=document.getElementById('joinCodeHint'); if(!el){ return; }
+  sb.from('it_platform_settings').select('self_study_enabled').eq('id',1).maybeSingle().then(function(res){
+    var on = !(res && res.data && res.data.self_study_enabled===false);
+    el.textContent = on ? '(optional — leave blank to study independently)' : '(enter the join code from your instructor)';
+  }, function(){});
+}
+
+/* ---- Instructor: edit / reschedule an existing assignment ---- */
+function openAssignmentEditor(id){
+  sb.from('it_assignments').select('*').eq('id',id).single().then(function(res){
+    if(res.error||!res.data){ alert('Could not load assignment.'); return; }
+    var a=res.data;
+    var m=document.createElement('div'); m.className='modal-bg';
+    m.innerHTML='<div class="modal" style="max-width:520px;"><h2 style="margin-bottom:10px;">Edit / reschedule assignment</h2>'+
+      '<div id="aeMsg" class="msg"></div>'+
+      '<div class="field"><label>Title</label><input id="aeTitle" value="'+esc(a.title||'')+'"></div>'+
+      '<div class="field"><label>Instructions</label><textarea id="aeInstr" style="min-height:90px;">'+esc(a.instructions||'')+'</textarea></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
+        '<div class="field"><label>Points</label><input id="aePoints" type="number" min="0" value="'+(a.points||0)+'"></div>'+
+        '<div class="field"><label>Due date (reschedule)</label><input id="aeDue" type="datetime-local" value="'+dtLocalValue(a.due_at)+'"></div>'+
+      '</div>'+
+      '<div style="font-size:11.5px;color:var(--text-subtle);margin:-4px 0 10px;">Clear the due date to remove the deadline.</div>'+
+      '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="aeCancel">Cancel</button><button class="btn btn-primary" id="aeSave">Save changes</button></div></div>';
+    $('modalHost').appendChild(m);
+    function close(){ $('modalHost').innerHTML=''; }
+    $('aeCancel').addEventListener('click', close);
+    m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+    $('aeSave').addEventListener('click', function(){
+      var title=$('aeTitle').value.trim();
+      if(!title){ $('aeMsg').textContent='Title is required.'; $('aeMsg').className='msg err'; return; }
+      var pts=parseInt($('aePoints').value,10); if(isNaN(pts)||pts<0){ pts=0; }
+      var due=$('aeDue').value?localToIso($('aeDue').value):null;
+      $('aeSave').disabled=true;
+      sb.from('it_assignments').update({ title:title, instructions:$('aeInstr').value.trim(), points:pts, due_at:due }).eq('id',id).then(function(r){
+        $('aeSave').disabled=false;
+        if(r.error){ $('aeMsg').textContent=r.error.message; $('aeMsg').className='msg err'; return; }
+        close();
+        if(typeof loadAssignmentsList==='function'){ loadAssignmentsList(); }
+      });
+    });
+  });
+}
+
 /* ====================================================================
    PEOPLE (admin only) — grant / revoke instructor access
    ==================================================================== */
@@ -3539,12 +3588,17 @@ function startGradedQuiz(chapter) {
   // quiz can therefore never be blocked by this feature being half-deployed.
   var proceed = function (closesAt) { startGradedQuizConfirmed(chapter, closesAt); };
   try {
-    sb.from('it_quiz_deadlines').select('closes_at')
+    sb.from('it_quiz_deadlines').select('opens_at,closes_at')
       .eq('course_id', courseId).eq('chapter', chapter).maybeSingle()
       .then(function (dl) {
-        var closesAt = null;
-        if (dl && !dl.error && dl.data && dl.data.closes_at) {
-          closesAt = new Date(dl.data.closes_at).getTime();
+        var closesAt = null, opensAt = null;
+        if (dl && !dl.error && dl.data) {
+          if (dl.data.closes_at) { closesAt = new Date(dl.data.closes_at).getTime(); }
+          if (dl.data.opens_at) { opensAt = new Date(dl.data.opens_at).getTime(); }
+        }
+        if (opensAt !== null && Date.now() < opensAt) {
+          area.innerHTML = errCard('The Chapter ' + chapter + ' quiz opens on ' + new Date(opensAt).toLocaleString() + '. Please come back then.');
+          return;
         }
         if (closesAt !== null && Date.now() > closesAt) {
           area.innerHTML = errCard('The Chapter ' + chapter + ' quiz closed on ' + new Date(closesAt).toLocaleString() + '. It can no longer be taken. You can review the questions you missed using "Review missed questions".');
