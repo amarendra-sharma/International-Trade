@@ -3055,6 +3055,125 @@ function openAssignmentEditor(id){
 }
 
 
+
+/* ====================================================================
+   RESUMABLE SESSIONS — persist an in-progress exam/quiz attempt so it can
+   be resumed after a crash/glitch, and reopened by an instructor.
+   All writes are best-effort (fail-open): if it_sessions is absent the
+   exam/quiz engine behaves exactly as before.
+   ==================================================================== */
+function examPayload(){ return { items:ExamState.items, answers:ExamState.answers, idx:ExamState.idx, deadline:ExamState.deadline, title:(ExamState.exam?ExamState.exam.title:'') }; }
+function createExamSession(){
+  try{
+    if(!ExamState||!ExamState.exam||!State.user){ return; }
+    var eid=ExamState.exam.id, uid=State.user.id, cid=ExamState.courseId;
+    sb.from('it_sessions').delete().eq('student_id',uid).eq('kind','exam').eq('exam_id',eid).then(function(){
+      sb.from('it_sessions').insert({ student_id:uid, course_id:cid, kind:'exam', exam_id:eid, payload:examPayload(), status:'active' }).then(function(){},function(){});
+    },function(){});
+  }catch(e){}
+}
+function saveExamSession(){
+  try{
+    if(!ExamState||!ExamState.exam||ExamState.finished||!State.user){ return; }
+    sb.from('it_sessions').update({ payload:examPayload(), updated_at:new Date().toISOString() })
+      .eq('student_id',State.user.id).eq('kind','exam').eq('exam_id',ExamState.exam.id).then(function(){},function(){});
+  }catch(e){}
+}
+function markExamSessionSubmitted(){
+  try{
+    if(!ExamState||!ExamState.exam||!State.user){ return; }
+    sb.from('it_sessions').update({ status:'submitted', updated_at:new Date().toISOString() })
+      .eq('student_id',State.user.id).eq('kind','exam').eq('exam_id',ExamState.exam.id).then(function(){},function(){});
+  }catch(e){}
+}
+function resumeExam(exam, sessionRow, accom){
+  var p = (sessionRow && sessionRow.payload) ? sessionRow.payload : {};
+  var items = p.items || [];
+  if(!items.length){ startExam(exam, accom); return; }   // nothing saved -> fresh start
+  ExamState = { exam:exam, items:items, answers:(p.answers||{}), idx:(p.idx||0), courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:(p.deadline||null), _consented:true };
+  var host = $('myExamsBody'); if(host){ host.innerHTML=''; }
+  startExamTimer();
+  renderExamQuestion();
+  if(typeof MNProctor!=='undefined'){
+    MNProctor.onAutoSubmit(function(){ if(!ExamState.finished && !ExamState.submitting){ gradeExam(true); } });
+    MNProctor.start(exam, State.user);
+  }
+}
+
+function quizPayload(){ return { items:QuizState.items, answers:QuizState.answers, idx:QuizState.idx, attemptsUsed:QuizState.attemptsUsed, bestPrior:QuizState.bestPrior }; }
+function createQuizSession(){
+  try{
+    if(!QuizState||!State.user){ return; }
+    var ch=QuizState.chapter, uid=State.user.id, cid=QuizState.courseId;
+    sb.from('it_sessions').delete().eq('student_id',uid).eq('kind','quiz').eq('quiz_chapter',ch).then(function(){
+      sb.from('it_sessions').insert({ student_id:uid, course_id:cid, kind:'quiz', quiz_chapter:ch, payload:quizPayload(), status:'active' }).then(function(){},function(){});
+    },function(){});
+  }catch(e){}
+}
+function saveQuizSession(){
+  try{
+    if(!QuizState||QuizState.submitting||!State.user){ return; }
+    sb.from('it_sessions').update({ payload:quizPayload(), updated_at:new Date().toISOString() })
+      .eq('student_id',State.user.id).eq('kind','quiz').eq('quiz_chapter',QuizState.chapter).then(function(){},function(){});
+  }catch(e){}
+}
+function markQuizSessionSubmitted(){
+  try{
+    if(!QuizState||!State.user){ return; }
+    sb.from('it_sessions').update({ status:'submitted', updated_at:new Date().toISOString() })
+      .eq('student_id',State.user.id).eq('kind','quiz').eq('quiz_chapter',QuizState.chapter).then(function(){},function(){});
+  }catch(e){}
+}
+function resumeQuiz(sessionRow){
+  var p = (sessionRow && sessionRow.payload) ? sessionRow.payload : {};
+  var items = p.items || [];
+  if(!items.length){ startGradedQuizFlow(sessionRow.quiz_chapter); return; }
+  QuizState = { chapter:sessionRow.quiz_chapter, courseId:sessionRow.course_id, items:items, idx:(p.idx||0), answers:(p.answers||{}), attemptsUsed:(p.attemptsUsed||0), bestPrior:(p.bestPrior!==undefined?p.bestPrior:null), submitting:false };
+  renderQuizQuestion();
+  if (typeof MNProctor !== 'undefined') {
+    var quizSession = { id:'quiz-ch'+QuizState.chapter, course_id:QuizState.courseId, camera_mode:'off', proctored:true, noPersist:true, sessionLabel:'quiz' };
+    MNProctor.onAutoSubmit(function(){ if (QuizState && !QuizState.submitting) { submitGradedQuiz(); } });
+    MNProctor.start(quizSession, State.user);
+  }
+}
+/* thin wrapper: resume an active quiz session if one exists, else the normal flow */
+function startGradedQuiz(chapter){
+  if(!chapter){ return; }
+  var area=$('practiceArea');
+  var uid=State.user?State.user.id:null;
+  var courseId=State.payCourseId||State.selfCourseId;
+  if(!uid||!courseId){ if(area){ area.innerHTML=errCard('Please sign in to take a graded quiz.'); } return; }
+  try{
+    sb.from('it_sessions').select('*').eq('student_id',uid).eq('kind','quiz').eq('quiz_chapter',chapter).eq('status','active').maybeSingle().then(function(sres){
+      if(sres && !sres.error && sres.data && sres.data.payload && (sres.data.payload.items||[]).length){ resumeQuiz(sres.data); return; }
+      startGradedQuizFlow(chapter);
+    }, function(){ startGradedQuizFlow(chapter); });
+  }catch(e){ startGradedQuizFlow(chapter); }
+}
+
+/* Instructor: reopen a student's last attempt (exam/quiz) so they can resume. */
+function reopenSession(scope, target, studentId, courseId, newDeadline, cb){
+  var q = sb.from('it_sessions').select('*').eq('student_id',studentId).eq('kind',scope);
+  if(scope==='exam'){ q=q.eq('exam_id',target); } else { q=q.eq('quiz_chapter',target); }
+  q.order('updated_at',{ascending:false}).limit(1).maybeSingle().then(function(res){
+    if(res.error){ cb('The sessions table is not installed yet — run migration 007_sessions.sql.'); return; }
+    if(!res.data){ cb('No saved attempt was found to resume. The student may not have started it, or started it before resume was enabled. Grant an extra attempt instead.'); return; }
+    var payload = res.data.payload || {};
+    if(newDeadline){ payload.deadline = new Date(newDeadline).getTime(); }
+    sb.from('it_sessions').update({ status:'active', payload:payload, updated_at:new Date().toISOString() }).eq('id',res.data.id).then(function(u){
+      if(u.error){ cb(u.error.message); return; }
+      if(scope==='quiz'){
+        // undo the interrupted sitting so a clean resubmit does not double-count
+        sb.from('it_chapter_progress').select('quiz_attempts').eq('student_id',studentId).eq('course_id',courseId).eq('chapter',target).maybeSingle().then(function(pr){
+          var used = (pr && pr.data && pr.data.quiz_attempts)?Number(pr.data.quiz_attempts):0;
+          if(used>0){ sb.from('it_chapter_progress').update({ quiz_attempts: used-1 }).eq('student_id',studentId).eq('course_id',courseId).eq('chapter',target).then(function(){ cb(null); },function(){ cb(null); }); }
+          else { cb(null); }
+        }, function(){ cb(null); });
+      } else { cb(null); }
+    });
+  });
+}
+
 /* ====================================================================
    PER-STUDENT OVERRIDES — extra attempts + rescheduled deadlines for a
    specific exam, graded quiz, or assignment (missed deadlines / glitches).
@@ -3075,7 +3194,7 @@ function openOverridesModal(studentId, email){
     '</div>'+
     '<div class="field"><label>New open time (optional)</label><input id="ovOpens" type="datetime-local"></div>'+
     '<div class="field"><label>Note (optional)</label><input id="ovNote" placeholder="e.g. auto-submitted by a glitch — allowed to finish"></div>'+
-    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="ovCancel">Close</button><button class="btn btn-primary" id="ovSave">Grant</button></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="ovCancel">Close</button><button class="btn btn-ghost" id="ovReopen" title="Reopen this student&#39;s last attempt so they can resume from where they left off">Reopen last attempt</button><button class="btn btn-primary" id="ovSave">Grant</button></div>'+
     '<div style="margin-top:16px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);margin-bottom:6px;">Current overrides for this student</div><div id="ovList">'+loadingCard()+'</div></div></div>';
   $('modalHost').appendChild(m);
   function close(){ $('modalHost').innerHTML=''; }
@@ -3090,6 +3209,17 @@ function openOverridesModal(studentId, email){
     $('ovTarget').innerHTML = list.length ? list.map(function(x){ return '<option value="'+x.id+'">'+esc(x.title)+'</option>'; }).join('') : '<option value="">(none yet)</option>';
   }
   $('ovScope').addEventListener('change', fillTarget);
+  $('ovReopen').addEventListener('click', function(){
+    var scope=$('ovScope').value;
+    if(scope==='assignment'){ $('ovMsg').textContent='Reopen applies to exams and graded quizzes.'; $('ovMsg').className='msg err'; return; }
+    var target = scope==='quiz' ? (parseInt($('ovChapter').value,10)||1) : ($('ovTarget').value||null);
+    if(scope!=='quiz' && !target){ $('ovMsg').textContent='Select an exam first.'; $('ovMsg').className='msg err'; return; }
+    var nd = $('ovDeadline').value ? localToIso($('ovDeadline').value) : null;
+    reopenSession(scope, target, studentId, courseId, nd, function(err){
+      if(err){ $('ovMsg').textContent=err; $('ovMsg').className='msg err'; return; }
+      $('ovMsg').textContent='Reopened — the student can now resume from where they left off.'; $('ovMsg').className='msg ok';
+    });
+  });
   Promise.all([
     sb.from('it_exams').select('id,title').eq('course_id',courseId).order('created_at',{ascending:false}),
     sb.from('it_assignments').select('id,title').eq('course_id',courseId).order('created_at',{ascending:false})
@@ -3662,7 +3792,7 @@ var QUIZ_PASS = 0.70;       // 70% to pass
 var QUIZ_MAX_ATTEMPTS = 1;  // graded quiz: a single attempt per chapter
 var QuizState = null;
 
-function startGradedQuiz(chapter) {
+function startGradedQuizFlow(chapter) {
   if (!chapter) { return; }
   var area = $('practiceArea');
   var uid = State.user ? State.user.id : null;
@@ -3762,6 +3892,7 @@ function startGradedQuizConfirmed(chapter, closesAt, extraAtt) {
       chain.then(function(){
         if (issued.length === 0) { area.innerHTML = errCard('Could not start the quiz. Please try again.'); return; }
         QuizState = { chapter:chapter, courseId:courseId, items:issued, idx:0, answers:{}, attemptsUsed:used, bestPrior:bestPrior, submitting:false };
+        createQuizSession();
         renderQuizQuestion();
         // Lightweight integrity: fullscreen + tab-switch/copy blocking + auto-submit,
         // no webcam and no stored proctor record (camera_mode off, noPersist true).
@@ -3822,17 +3953,19 @@ function renderQuizQuestion() {
       QuizState.answers[QuizState.idx] = parseInt(b.getAttribute('data-qopt'), 10);
       Array.prototype.forEach.call(area.querySelectorAll('[data-qopt]'), function(x){ x.classList.remove('sel'); });
       b.classList.add('sel');
+      saveQuizSession();
     });
   });
   function saveNum(){ var ni = $('quizNum'); if (ni) { var v = ni.value.trim(); if (v !== '') { QuizState.answers[QuizState.idx] = v; } } }
-  if ($('quizPrev')) { $('quizPrev').addEventListener('click', function(){ saveNum(); if (QuizState.idx > 0) { QuizState.idx--; renderQuizQuestion(); } }); }
-  if ($('quizNext')) { $('quizNext').addEventListener('click', function(){ saveNum(); if (QuizState.idx < n - 1) { QuizState.idx++; renderQuizQuestion(); } }); }
+  if ($('quizPrev')) { $('quizPrev').addEventListener('click', function(){ saveNum(); saveQuizSession(); if (QuizState.idx > 0) { QuizState.idx--; renderQuizQuestion(); } }); }
+  if ($('quizNext')) { $('quizNext').addEventListener('click', function(){ saveNum(); saveQuizSession(); if (QuizState.idx < n - 1) { QuizState.idx++; renderQuizQuestion(); } }); }
   if ($('quizSubmit')) { $('quizSubmit').addEventListener('click', function(){ saveNum(); submitGradedQuiz(); }); }
 }
 
 function submitGradedQuiz() {
   if (QuizState.submitting) { return; }
   QuizState.submitting = true;
+  markQuizSessionSubmitted();
   // End the lightweight proctoring session (exit fullscreen, remove banner/handlers).
   if (typeof MNProctor !== 'undefined' && MNProctor.isActive()) { MNProctor.finish(); }
   var area = $('practiceArea');
@@ -4512,7 +4645,8 @@ function loadMyExams() {
       sb.from('it_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at,proctored,camera_mode,random_per_student,random_recipe').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
       sb.from('it_attempts').select('exam_id,item_id,points_earned,graded_at,submitted_value').eq('student_id', uid).not('exam_id','is',null),
       sb.from('it_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid),
-      sb.from('it_overrides').select('exam_id,extra_attempts,new_opens_at,new_deadline').eq('student_id', uid).eq('scope','exam')
+      sb.from('it_overrides').select('exam_id,extra_attempts,new_opens_at,new_deadline').eq('student_id', uid).eq('scope','exam'),
+      sb.from('it_sessions').select('exam_id,payload,status').eq('student_id', uid).eq('kind','exam').eq('status','active')
     ]).then(function(r) {
       var exams = r[0].data ? r[0].data : [];
       exams = exams.filter(function(e){ return e.kind==='midterm' || e.kind==='final'; });
@@ -4520,6 +4654,7 @@ function loadMyExams() {
       var accoms = r[2].data ? r[2].data : [];
       var accomByCourse = {}; accoms.forEach(function(a){ accomByCourse[a.course_id]=a; });
       var ovrByExam = {}; ((r[3]&&r[3].data)?r[3].data:[]).forEach(function(o){ if(o.exam_id){ ovrByExam[o.exam_id]=o; } });
+      var activeByExam = {}; ((r[4]&&r[4].data)?r[4].data:[]).forEach(function(z){ if(z.exam_id){ activeByExam[z.exam_id]=z; } });
       if (exams.length === 0) { host.innerHTML = '<div class="card empty">No exams have been assigned yet.</div>'; return; }
       // count graded SITTINGS per exam = graded attempts on that exam's first item
       var sittingsBy = {}; var lastPts = {};
@@ -4577,6 +4712,7 @@ function loadMyExams() {
           statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>'+reviewBtn;
         }
         else { statusHtml='<span class="tag amber">'+(sittings>0?('Attempt '+(sittings+1)):'Not taken')+'</span>'; action='<button class="btn btn-primary btn-sm" data-start="'+e.id+'">'+(sittings>0?'Retake':'Start exam')+'</button>'; }
+        if(activeByExam[e.id]){ statusHtml='<span class="tag amber">in progress</span>'; action='<button class="btn btn-primary btn-sm" data-resume="'+e.id+'">Resume exam</button>'; }
         var meta = nItems + ' questions · ' + (e.total_points||0) + ' pts';
         if (tmin) { meta += ' · ' + tmin + ' min' + (acc && Number(acc.time_multiplier)!==1 ? ' (incl. your accommodation)' : ''); }
         meta += ' · attempts left: ' + attemptsLeft;
@@ -4596,6 +4732,15 @@ function loadMyExams() {
           var exam = null; for (var i=0;i<exams.length;i++){ if(exams[i].id===eid){ exam=exams[i]; break; } }
           var acc = exam?accomByCourse[exam.course_id]:null;
           if (exam) { startExam(exam, acc); }
+        });
+      });
+      Array.prototype.forEach.call(host.querySelectorAll('[data-resume]'), function(b) {
+        b.addEventListener('click', function() {
+          var eid = b.getAttribute('data-resume');
+          var exam = null; for (var i=0;i<exams.length;i++){ if(exams[i].id===eid){ exam=exams[i]; break; } }
+          var acc = exam?accomByCourse[exam.course_id]:null;
+          var sess = activeByExam[eid];
+          if (exam && sess) { resumeExam(exam, { payload: sess.payload }, acc); }
         });
       });
     });
@@ -4710,6 +4855,7 @@ function reallyStartExam(exam, accom) {
         return;
       }
       ExamState.items = issued;
+      createExamSession();
       startExamTimer();
       renderExamQuestion();
       if(typeof MNProctor!=='undefined'){
@@ -4801,6 +4947,7 @@ function renderExamQuestion() {
         b.classList.add('sel');
         var di = b.getAttribute('data-i');
         ExamState.answers[i] = (di !== null && di !== undefined) ? di : b.getAttribute('data-val');
+        saveExamSession();
       });
     });
   }
@@ -4808,9 +4955,9 @@ function renderExamQuestion() {
     var t = $('examText'); if (t) { ExamState.answers[i] = t.value; return; }
     var el = $('examNum'); if (el) { ExamState.answers[i] = el.value.trim(); }
   }
-  if ($('examPrev')) { $('examPrev').addEventListener('click', function(){ captureNum(); ExamState.idx = Math.max(0, i-1); renderExamQuestion(); }); }
-  if ($('examNext')) { $('examNext').addEventListener('click', function(){ captureNum(); ExamState.idx = Math.min(n-1, i+1); renderExamQuestion(); }); }
-  if ($('examSubmit')) { $('examSubmit').addEventListener('click', function(){ captureNum(); confirmSubmitExam(); }); }
+  if ($('examPrev')) { $('examPrev').addEventListener('click', function(){ captureNum(); saveExamSession(); ExamState.idx = Math.max(0, i-1); renderExamQuestion(); }); }
+  if ($('examNext')) { $('examNext').addEventListener('click', function(){ captureNum(); saveExamSession(); ExamState.idx = Math.min(n-1, i+1); renderExamQuestion(); }); }
+  if ($('examSubmit')) { $('examSubmit').addEventListener('click', function(){ captureNum(); saveExamSession(); confirmSubmitExam(); }); }
 }
 
 function confirmSubmitExam() {
@@ -4858,6 +5005,7 @@ function gradeExam(auto) {
   });
   chain.then(function() {
     ExamState.finished = true;
+    markExamSessionSubmitted();
     var pct = autoPts ? Math.round((earned/autoPts)*100) : 0;
     var autoLine = autoPts > 0
       ? (correct + ' of ' + (items.length - pendingCount) + ' auto-graded correct \u00b7 ' + earned + ' / ' + autoPts + ' points')
