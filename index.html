@@ -214,9 +214,29 @@
 .pm-p2{color:var(--gold,#c9920a);font-weight:600;}
 .pm-legend{font-size:11.5px;color:var(--text-subtle);margin-top:6px;text-align:center;}
 .gt-wrap{margin:14px 0;padding:10px;border:1px solid var(--border);border-radius:8px;overflow-x:auto;}
+<style id="a11yStyles">
+  a.skip-link{position:absolute;left:8px;top:-60px;background:var(--violet-deep);color:#fff;padding:10px 16px;border-radius:8px;z-index:100000;transition:top .15s;text-decoration:none;font-weight:600;}
+  a.skip-link:focus{top:8px;outline:3px solid #fff;}
+  :focus-visible{outline:3px solid var(--amber);outline-offset:2px;border-radius:4px;}
+  .nav-item:focus-visible,.btn:focus-visible,.q-option:focus-visible,.seg:focus-visible{outline:3px solid var(--amber);outline-offset:2px;}
+  html.a11y-hc{--bg:#000;--bg-deep:#000;--surface:#0b0b0b;--surface-strong:#161616;--border:#ffffff;--border-strong:#ffffff;--text:#ffffff;--text-bright:#ffffff;--text-muted:#ececec;--text-subtle:#d2d2d2;--violet:#cdbcff;--violet-deep:#b9a2ff;--amber:#ffd23f;--green:#5cf5ab;--rose:#ff9aa6;}
+  html.a11y-hc body{background:#000;}
+  html.a11y-hc .card,html.a11y-hc .q-card,html.a11y-hc .modal,html.a11y-hc .tbl td,html.a11y-hc .tbl th,html.a11y-hc .nav-item{border:1px solid #fff !important;}
+  html.a11y-hc a{text-decoration:underline;}
+  html.a11y-cb{--violet:#0072B2;--violet-deep:#005b8f;--amber:#E69F00;--green:#009E73;--rose:#D55E00;}
+  html.a11y-z2 body{zoom:1.15;} html.a11y-z3 body{zoom:1.3;}
+  .a11y-btn{display:inline-flex;align-items:center;gap:6px;background:var(--surface-strong);border:1px solid var(--border-strong);color:var(--text-bright);border-radius:8px;padding:7px 11px;font-size:12.5px;cursor:pointer;}
+  .a11y-panel{position:absolute;right:0;top:100%;margin-top:8px;background:var(--bg-deep);border:1px solid var(--border-strong);border-radius:12px;padding:14px;min-width:250px;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,.55);}
+  .a11y-panel h4{font-size:13px;margin-bottom:8px;color:var(--text-bright);}
+  .a11y-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+  .a11y-row .seg{flex:1;min-width:64px;text-align:center;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;cursor:pointer;font-size:12px;color:var(--text);background:transparent;}
+  .a11y-row .seg[aria-pressed="true"]{background:var(--violet-deep);color:#fff;border-color:var(--violet-deep);}
+  @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important;scroll-behavior:auto !important;}}
 </style>
+<script>try{var _a=JSON.parse(localStorage.getItem('it_a11y')||'{}');var _d=document.documentElement;if(_a.z&&_a.z>1)_d.classList.add('a11y-z'+_a.z);if(_a.hc)_d.classList.add('a11y-hc');if(_a.cb)_d.classList.add('a11y-cb');}catch(e){}</script>
 </head>
 <body>
+<a href="#mainContent" class="skip-link">Skip to main content</a>
 
 <!-- ===================== AUTH ===================== -->
 <div id="authScreen" class="auth-wrap">
@@ -254,7 +274,7 @@
 
 <!-- ===================== APP ===================== -->
 <div id="appScreen" class="app hidden">
-  <aside class="sidebar">
+  <aside class="sidebar" role="navigation" aria-label="Primary navigation">
     <div class="side-brand"><a href="https://macronations.com" target="_blank" rel="noopener" title="MacroNations portal" style="display:flex;align-items:center;gap:10px;text-decoration:none;"><span class="mn-logo" style="width:34px;height:34px;display:inline-block;"><svg viewBox="0 0 36 36" width="34" height="34" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MacroNations logo"><defs><clipPath id="nsc1"><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z"/></clipPath></defs><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="#0D1F3C"/><rect x="4" y="9" width="28" height="6" fill="#1A3260" clip-path="url(#nsc1)"/><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="none" stroke="#FFD700" stroke-width="1.5"/><text x="18" y="16" text-anchor="middle" font-family="Georgia,serif" font-size="7.5" font-weight="700" fill="#FFD700" letter-spacing="2">MN</text><line x1="8" y1="18" x2="28" y2="18" stroke="#FFD700" stroke-width="0.8"/><rect x="6.5" y="27.5" width="2.5" height="4.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="10" y="25.5" width="2.5" height="6.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="13.5" y="23.5" width="2.5" height="8.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="17" y="21.5" width="2.5" height="10.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="20.5" y="19.5" width="2.5" height="12.5" fill="#60A5FA" clip-path="url(#nsc1)"/><polyline points="7.75,27 11.25,25 14.75,22.8 18.25,20.5 21.75,18.5" fill="none" stroke="#00FF88" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#nsc1)"/></svg></span><span class="brand-name">Console</span></a></div>
     <div class="nav-group">
       <div class="nav-group-label">Learn</div>
@@ -302,7 +322,7 @@
     </div>
   </aside>
 
-  <main class="main">
+  <main class="main" id="mainContent" role="main" tabindex="-1">
     <div class="topbar">
       <div>
         <h1 class="page-title" id="pageTitle">Dashboard</h1>
@@ -310,7 +330,7 @@
       </div>
       <div class="course-pick" id="coursePickWrap">
         <span style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.08em;">Course</span>
-        <select id="coursePick"></select>
+        <select id="coursePick" aria-label="Select course"></select>
       </div>
     </div>
 
@@ -793,13 +813,20 @@ var VIEW_META = {
 };
 var currentView='home';
 Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it){
-  it.addEventListener('click', function(){
-    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(x){ x.classList.remove('active'); });
-    it.classList.add('active');
+  it.setAttribute('role','button');
+  if(!it.hasAttribute('tabindex')){ it.setAttribute('tabindex','0'); }
+  var _ico=it.querySelector('.ico'); if(_ico){ _ico.setAttribute('aria-hidden','true'); }
+  function activate(){
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(x){ x.classList.remove('active'); x.removeAttribute('aria-current'); });
+    it.classList.add('active'); it.setAttribute('aria-current','page');
     switchView(it.getAttribute('data-view'));
-  });
+  }
+  it.addEventListener('click', activate);
+  it.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' ' || e.key==='Spacebar'){ e.preventDefault(); activate(); } });
 });
 initSignupHint();
+initA11y();
+initModalA11y();
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
 var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading','flags'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics','reviews'];
@@ -3056,6 +3083,77 @@ function openAssignmentEditor(id){
 
 
 
+
+/* ====================================================================
+   ACCESSIBILITY (WCAG 2.1 AA helpers): a persistent controls menu (text
+   size, high contrast, colorblind-safe accents), keyboard-operable dialogs,
+   Escape-to-close, and focus management. Preferences persist per browser.
+   ==================================================================== */
+function initA11y(){
+  var KEY='it_a11y';
+  var st={ z:1, hc:0, cb:0 };
+  try{ var raw=localStorage.getItem(KEY); if(raw){ st=JSON.parse(raw)||st; } }catch(e){}
+  function setPressed(rowId, attr, val){
+    var row=document.getElementById(rowId); if(!row){ return; }
+    Array.prototype.forEach.call(row.querySelectorAll('.seg'), function(b){
+      b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-'+attr))===Number(val)));
+    });
+  }
+  function apply(){
+    var d=document.documentElement;
+    d.classList.remove('a11y-z1','a11y-z2','a11y-z3');
+    if(st.z && st.z>1){ d.classList.add('a11y-z'+st.z); }
+    d.classList.toggle('a11y-hc', !!st.hc);
+    d.classList.toggle('a11y-cb', !!st.cb);
+    try{ localStorage.setItem(KEY, JSON.stringify(st)); }catch(e){}
+    setPressed('a11yZoom','z',st.z||1); setPressed('a11yHc','hc',st.hc||0); setPressed('a11yCb','cb',st.cb||0);
+  }
+  if(!document.getElementById('a11yBtn')){
+    var wrap=document.createElement('div');
+    wrap.style.cssText='position:fixed;top:10px;right:12px;z-index:99998;';
+    wrap.innerHTML='<button class="a11y-btn" id="a11yBtn" aria-haspopup="true" aria-expanded="false" aria-controls="a11yPanel" title="Accessibility settings">♿ <span>Accessibility</span></button>'+
+      '<div class="a11y-panel hidden" id="a11yPanel" role="dialog" aria-label="Accessibility settings">'+
+      '<h4>Text size</h4><div class="a11y-row" id="a11yZoom"><button class="seg" data-z="1">Normal</button><button class="seg" data-z="2">Large</button><button class="seg" data-z="3">Larger</button></div>'+
+      '<h4>Contrast</h4><div class="a11y-row" id="a11yHc"><button class="seg" data-hc="0">Standard</button><button class="seg" data-hc="1">High contrast</button></div>'+
+      '<h4>Graph &amp; accent colors</h4><div class="a11y-row" id="a11yCb"><button class="seg" data-cb="0">Default</button><button class="seg" data-cb="1">Colorblind-safe</button></div>'+
+      '<div style="font-size:11px;color:var(--text-subtle);line-height:1.5;">Saved to this browser. Diagrams also carry text labels, so they never rely on color alone.</div></div>';
+    document.body.appendChild(wrap);
+    var btn=document.getElementById('a11yBtn'), pan=document.getElementById('a11yPanel');
+    btn.addEventListener('click', function(){ var open = pan.classList.toggle('hidden')===false; btn.setAttribute('aria-expanded', String(open)); });
+    document.addEventListener('click', function(e){ if(!wrap.contains(e.target) && !pan.classList.contains('hidden')){ pan.classList.add('hidden'); btn.setAttribute('aria-expanded','false'); } });
+    document.getElementById('a11yZoom').addEventListener('click', function(e){ var b=e.target.closest('.seg'); if(!b){ return; } st.z=Number(b.getAttribute('data-z')); apply(); });
+    document.getElementById('a11yHc').addEventListener('click', function(e){ var b=e.target.closest('.seg'); if(!b){ return; } st.hc=Number(b.getAttribute('data-hc')); apply(); });
+    document.getElementById('a11yCb').addEventListener('click', function(e){ var b=e.target.closest('.seg'); if(!b){ return; } st.cb=Number(b.getAttribute('data-cb')); apply(); });
+  }
+  apply();
+}
+function initModalA11y(){
+  document.addEventListener('keydown', function(e){
+    if(e.key!=='Escape'){ return; }
+    var pan=document.getElementById('a11yPanel');
+    if(pan && !pan.classList.contains('hidden')){ pan.classList.add('hidden'); var b=document.getElementById('a11yBtn'); if(b){ b.setAttribute('aria-expanded','false'); } return; }
+    var host=document.getElementById('modalHost'); if(host && host.firstChild){ host.innerHTML=''; return; }
+    var ov=document.querySelector('.modal-overlay'); if(ov && ov.parentNode){ ov.parentNode.removeChild(ov); return; }
+  });
+  try{
+    var mo=new MutationObserver(function(muts){
+      muts.forEach(function(mm){
+        Array.prototype.forEach.call(mm.addedNodes||[], function(node){
+          if(node.nodeType!==1){ return; }
+          var modal = (node.matches && (node.matches('.modal-bg')||node.matches('.modal-overlay'))) ? node : (node.querySelector ? node.querySelector('.modal-bg,.modal-overlay') : null);
+          if(modal){
+            var box=modal.querySelector('.modal')||modal;
+            box.setAttribute('role','dialog'); box.setAttribute('aria-modal','true');
+            var f=modal.querySelector('input,select,textarea,button,[tabindex]');
+            if(f){ setTimeout(function(){ try{ f.focus(); }catch(e){} }, 30); }
+          }
+        });
+      });
+    });
+    mo.observe(document.body,{childList:true,subtree:true});
+  }catch(e){}
+}
+
 /* ====================================================================
    RESUMABLE SESSIONS — persist an in-progress exam/quiz attempt so it can
    be resumed after a crash/glitch, and reopened by an instructor.
@@ -3648,7 +3746,7 @@ function loadHome() {
   Array.prototype.forEach.call($('homeQuick').querySelectorAll('[data-go]'), function(el){
     el.addEventListener('click', function(){
       var v = el.getAttribute('data-go');
-      Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(x){ x.classList.toggle('active', x.getAttribute('data-view')===v); });
+      Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(x){ var _on=x.getAttribute('data-view')===v; x.classList.toggle('active', _on); if(_on){ x.setAttribute('aria-current','page'); } else { x.removeAttribute('aria-current'); } });
       switchView(v);
     });
   });
@@ -4074,7 +4172,7 @@ function renderFigure(fig) {
   // curves, RS/RD, labor-allocation, etc.). Items are staff-authored, so the
   // SVG is trusted. An optional caption renders beneath it.
   if (fig.type === 'svg' && fig.svg) {
-    return '<div class="q-figure" style="background:var(--panel2,#0f1420);border:1px solid var(--border,rgba(255,255,255,.09));border-radius:10px;padding:10px;margin:6px 0 4px;max-width:480px;">' +
+    return '<div class="q-figure" role="img" aria-label="' + esc(fig.caption || 'Diagram') + '" style="background:var(--panel2,#0f1420);border:1px solid var(--border,rgba(255,255,255,.09));border-radius:10px;padding:10px;margin:6px 0 4px;max-width:480px;">' +
       fig.svg + (fig.caption ? ('<div style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;">' + esc(fig.caption) + '</div>') : '') + '</div>';
   }
   return '';
