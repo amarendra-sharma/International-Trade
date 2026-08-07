@@ -12,7 +12,7 @@
     --bg:#0E0C20; --bg-deep:#0A0818; --surface:rgba(255,255,255,.025);
     --surface-strong:rgba(255,255,255,.04); --border:rgba(255,255,255,.07);
     --border-strong:rgba(255,255,255,.12); --text:#D4D1E8; --text-bright:#F0EEFA;
-    --text-muted:rgba(212,209,232,.6); --text-subtle:rgba(212,209,232,.4);
+    --text-muted:rgba(224,221,240,.82); --text-subtle:rgba(220,217,236,.66);
     --violet:#9B7BFF; --violet-deep:#7C5CFF; --amber:#FBBF24; --green:#34D399; --rose:#FB7185;
   }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -244,8 +244,8 @@
     <div class="brand"><a href="https://macronations.com" target="_blank" rel="noopener" title="MacroNations portal" style="display:flex;align-items:center;gap:12px;text-decoration:none;"><span style="width:42px;height:42px;display:inline-block;"><svg viewBox="0 0 36 36" width="42" height="42" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MacroNations logo"><defs><clipPath id="nsc2"><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z"/></clipPath></defs><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="#0D1F3C"/><rect x="4" y="9" width="28" height="6" fill="#1A3260" clip-path="url(#nsc2)"/><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="none" stroke="#FFD700" stroke-width="1.5"/><text x="18" y="16" text-anchor="middle" font-family="Georgia,serif" font-size="7.5" font-weight="700" fill="#FFD700" letter-spacing="2">MN</text><line x1="8" y1="18" x2="28" y2="18" stroke="#FFD700" stroke-width="0.8"/><rect x="6.5" y="27.5" width="2.5" height="4.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="10" y="25.5" width="2.5" height="6.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="13.5" y="23.5" width="2.5" height="8.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="17" y="21.5" width="2.5" height="10.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="20.5" y="19.5" width="2.5" height="12.5" fill="#60A5FA" clip-path="url(#nsc2)"/><polyline points="7.75,27 11.25,25 14.75,22.8 18.25,20.5 21.75,18.5" fill="none" stroke="#00FF88" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#nsc2)"/></svg></span><span class="brand-name">International Trade</span></a></div>
     <div class="auth-sub">Sign in to your international-trade workspace — or create an account to get started.</div>
     <div id="authMsg" class="msg"></div>
-    <div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu"></div>
-    <div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="********"></div>
+    <div class="field"><label>Email</label><input id="authEmail" aria-label="Email" type="email" autocomplete="email" placeholder="you@university.edu"></div>
+    <div class="field"><label>Password</label><input id="authPassword" aria-label="Password" type="password" autocomplete="current-password" placeholder="********"></div>
     <div id="forgotRow" style="text-align:right;margin-top:-6px;margin-bottom:8px;"><a href="#" id="forgotLink" style="font-size:12.5px;color:var(--violet);text-decoration:none;">Forgot password?</a></div>
     <div id="signupRole" class="hidden">
       <div class="field"><label>I am signing up as</label>
@@ -255,11 +255,11 @@
         </div>
       </div>
       <div id="studentJoin">
-        <div class="field"><label>Course join code <span id="joinCodeHint" style="color:var(--text-subtle);text-transform:none;letter-spacing:0;">(optional — leave blank to study independently)</span></label><input id="authJoinCode" placeholder="trade-xxxxx"></div>
+        <div class="field"><label>Course join code <span id="joinCodeHint" style="color:var(--text-subtle);text-transform:none;letter-spacing:0;">(optional — leave blank to study independently)</span></label><input id="authJoinCode" aria-label="Course join code (optional)" placeholder="trade-xxxxx"></div>
       </div>
       <div id="profFields" class="hidden">
-        <div class="field"><label>Institution</label><input id="authInstitution" placeholder="Binghamton University"></div>
-        <div class="field"><label>What & where do you teach? (a short note)</label><textarea id="authNote" style="min-height:64px;" placeholder="e.g. I teach international economics and want to use this platform in my Fall course."></textarea></div>
+        <div class="field"><label>Institution</label><input id="authInstitution" aria-label="Institution" placeholder="Binghamton University"></div>
+        <div class="field"><label>What & where do you teach? (a short note)</label><textarea id="authNote" aria-label="What and where do you teach" style="min-height:64px;" placeholder="e.g. I teach international economics and want to use this platform in my Fall course."></textarea></div>
         <div style="font-size:11.5px;color:var(--text-subtle);margin:-6px 0 14px;">Professor accounts need an academic email and admin approval. You'll get student access right away; teaching tools unlock once approved.</div>
       </div>
     </div>
@@ -373,7 +373,7 @@
       <h1 class="page-title">Practice Questions</h1>
       <div class="page-sub">Server-graded items. Each question is generated just for you — answers never reach the browser.</div>
       <div class="practice-bar">
-        <select class="sel" id="practiceChapter"></select>
+        <select class="sel" id="practiceChapter" aria-label="Select chapter to practice"></select>
         <button class="btn btn-primary" id="newQuestionBtn" style="width:auto;">New question</button>
         <button class="btn btn-ghost" id="takeQuizBtn" style="width:auto;" title="A short graded quiz for this chapter. Counts toward your grade. Answers are never shown until after the deadline.">Take graded quiz</button>
         <button class="btn btn-ghost" id="reviewQuizBtn" style="width:auto;" title="Once the quiz deadline has passed, review the questions you missed with the correct answers.">Review missed questions</button>
