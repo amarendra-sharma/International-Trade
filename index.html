@@ -4095,7 +4095,7 @@ function submitGradedQuiz() {
     QuizState.items.forEach(function (it) { if (it && it.attempt_id) { attIds.push(String(it.attempt_id)); } });
     var row = {
       student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter,
-      quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), quiz_attempts: attemptsUsed, reading_done: true,
+      quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), quiz_attempts: attemptsUsed,
       quiz_attempt_ids: attIds
     };
     function showResult(saveErr){
@@ -4122,7 +4122,7 @@ function submitGradedQuiz() {
       if (res.error) {
         var msg = String(res.error.message || res.error);
         if (msg.toLowerCase().indexOf('quiz_attempts') !== -1 || msg.toLowerCase().indexOf('column') !== -1) {
-          var row2 = { student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter, quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), reading_done: true };
+          var row2 = { student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter, quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS) };
           sb.from('it_chapter_progress').upsert(row2, { onConflict: 'student_id,course_id,chapter' }).select().then(function(res2){
             showResult(res2.error ? String(res2.error.message || res2.error) : null);
           });
@@ -5544,5 +5544,6 @@ sb.auth.onAuthStateChange(function(event, session){
 });
 try { console.log('%cInternational Trade build: ' + IT_BUILD + ' | tree renderer present: ' + (typeof renderTreeFigure !== 'undefined') + ' | matrix renderer present: ' + (typeof renderMatrixFigure !== 'undefined'), 'color:#7c6df2;font-weight:bold'); } catch(e){}
 </script>
+<script src="macronations-enhance.js" defer></script>
 </body>
 </html>
