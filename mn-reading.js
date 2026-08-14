@@ -38,6 +38,110 @@
         options: ['inside its production frontier', 'exactly on its frontier', 'beyond (outside) its own frontier', 'below the origin'], answer: 2 },
       { at: 0.95, q: 'The “pauper-labor” fallacy is wrong because a country’s low wages mainly reflect its low…',
         options: ['tariffs', 'productivity', 'population', 'exchange rate'], answer: 1 }
+    ],
+    2: [
+      { at: 0.30, q: 'In the Ricardian model, comparative advantage arises from differences across countries in…',
+        options: ['tastes', 'labor productivity (technology)', 'tariffs', 'population'], answer: 1 },
+      { at: 0.60, q: 'The equilibrium relative wage must lie between the two countries’…',
+        options: ['populations', 'relative labor productivities in the two goods', 'tax rates', 'exchange rates'], answer: 1 },
+      { at: 0.85, q: 'A country exports the good in which its relative productivity is…',
+        options: ['lowest', 'highest', 'exactly average', 'zero'], answer: 1 }
+    ],
+    3: [
+      { at: 0.30, q: 'In the specific-factors model, labor is mobile between sectors, but the other factors are…',
+        options: ['also freely mobile', 'specific (stuck) to one sector', 'owned by the state', 'untaxed'], answer: 1 },
+      { at: 0.60, q: 'When a country opens to trade, the factor specific to the EXPORT sector tends to…',
+        options: ['lose', 'gain', 'be unaffected', 'emigrate'], answer: 1 },
+      { at: 0.85, q: 'Trade creates short-run winners and losers because some factors are…',
+        options: ['perfectly mobile', 'immobile (specific) to a sector', 'foreign-owned', 'exempt from tax'], answer: 1 }
+    ],
+    4: [
+      { at: 0.30, q: 'Heckscher–Ohlin: a country exports the good that uses intensively its ___ factor.',
+        options: ['scarce', 'abundant', 'imported', 'oldest'], answer: 1 },
+      { at: 0.60, q: 'Stolper–Samuelson: a rise in a good’s price raises the real return to the factor used ___ in it.',
+        options: ['least', 'intensively', 'equally', 'not at all'], answer: 1 },
+      { at: 0.85, q: 'Opening to trade tends to ___ the real income of a country’s scarce factor.',
+        options: ['raise', 'lower', 'not change', 'double'], answer: 1 }
+    ],
+    5: [
+      { at: 0.30, q: 'A country’s terms of trade are the price of its ___ relative to its imports.',
+        options: ['labor', 'exports', 'currency', 'tariffs'], answer: 1 },
+      { at: 0.60, q: 'The equilibrium world relative price is where relative supply (RS) meets relative…',
+        options: ['demand (RD)', 'wage', 'tariff', 'cost'], answer: 0 },
+      { at: 0.85, q: 'An improvement in a country’s terms of trade ___ its welfare.',
+        options: ['lowers', 'raises', 'does not change', 'eliminates'], answer: 1 }
+    ],
+    6: [
+      { at: 0.30, q: 'With economies of scale, as output rises the average cost…',
+        options: ['rises', 'falls', 'stays constant', 'becomes zero'], answer: 1 },
+      { at: 0.60, q: 'Two-way trade in similar products (cars for cars) is called ___ trade.',
+        options: ['inter-industry', 'intra-industry', 'barter', 'illegal'], answer: 1 },
+      { at: 0.85, q: 'Under monopolistic competition, trade lets each surviving firm produce at ___ scale and gives consumers ___ variety.',
+        options: ['smaller; less', 'larger; more', 'zero; no', 'the same; the same'], answer: 1 }
+    ],
+    7: [
+      { at: 0.30, q: 'Within an industry, firms that export tend to be ___ than firms that don’t.',
+        options: ['smaller and less productive', 'larger and more productive', 'identical', 'state-owned'], answer: 1 },
+      { at: 0.60, q: 'The gravity equation says bilateral trade rises with the two countries’ ___ and falls with ___.',
+        options: ['tariffs; wages', 'economic size; distance', 'population; language', 'exports; imports'], answer: 1 },
+      { at: 0.85, q: 'Horizontal FDI (a plant abroad) is chosen mainly to…',
+        options: ['avoid trade costs and serve the foreign market locally', 'lower taxes only', 'escape all regulation', 'hide profits'], answer: 0 }
+    ],
+    8: [
+      { at: 0.30, q: 'In a small country, a tariff raises the domestic price by ___ the tariff.',
+        options: ['less than', 'exactly', 'more than', 'zero times'], answer: 1 },
+      { at: 0.60, q: 'The net national loss from a small-country tariff is the two ___ triangles.',
+        options: ['transfer', 'deadweight-loss (production + consumption distortion)', 'revenue', 'profit'], answer: 1 },
+      { at: 0.85, q: 'Only a ___ country can improve its terms of trade with a tariff.',
+        options: ['small', 'large', 'poor', 'landlocked'], answer: 1 }
+    ],
+    9: [
+      { at: 0.30, q: 'Protection persists politically because its benefits are ___ and its costs are ___.',
+        options: ['diffuse; concentrated', 'concentrated; diffuse', 'zero; large', 'equal; equal'], answer: 1 },
+      { at: 0.60, q: 'The targeting principle: fix a distortion with the instrument closest to its…',
+        options: ['border', 'source', 'consumer', 'budget'], answer: 1 },
+      { at: 0.85, q: 'The infant-industry argument is valid only when there is a genuine…',
+        options: ['tariff', 'market failure', 'election', 'subsidy'], answer: 1 }
+    ],
+    10: [
+      { at: 0.30, q: 'The optimal-tariff argument works by improving a large country’s ___ at the partner’s expense.',
+        options: ['wages', 'terms of trade', 'population', 'currency'], answer: 1 },
+      { at: 0.60, q: 'A tariff war is a prisoner’s dilemma: both countries end up ___ than under mutual free trade.',
+        options: ['better off', 'worse off', 'unchanged', 'richer'], answer: 1 },
+      { at: 0.85, q: 'Cooperation on low tariffs is sustained by ___ over repeated interaction.',
+        options: ['luck', 'credible retaliation', 'subsidies', 'more tariffs'], answer: 1 }
+    ],
+    11: [
+      { at: 0.30, q: 'Most-favored-nation (MFN) treatment requires a concession to one member be extended to…',
+        options: ['no one', 'all members', 'only allies', 'the largest member'], answer: 1 },
+      { at: 0.60, q: 'Trade creation is a ___; trade diversion (buying from a dearer partner instead of a cheaper outsider) is a ___.',
+        options: ['loss; gain', 'gain; loss', 'tax; subsidy', 'quota; tariff'], answer: 1 },
+      { at: 0.85, q: 'A customs union differs from a free-trade area by having a common ___ tariff.',
+        options: ['internal', 'external', 'zero', 'import-only'], answer: 1 }
+    ],
+    12: [
+      { at: 0.30, q: 'If E is home currency per unit of foreign currency, a RISE in E is a ___ of the home currency.',
+        options: ['appreciation', 'depreciation', 'revaluation', 'freeze'], answer: 1 },
+      { at: 0.60, q: 'Marshall–Lerner: depreciation improves the balance only if the export and import demand elasticities sum above…',
+        options: ['zero', 'one', 'ten', 'one hundred'], answer: 1 },
+      { at: 0.85, q: 'Right after a depreciation the trade balance often ___ before improving (the J-curve).',
+        options: ['improves', 'worsens', 'disappears', 'doubles'], answer: 1 }
+    ],
+    13: [
+      { at: 0.30, q: 'The Prebisch–Singer hypothesis concerns a long-run ___ in commodity exporters’ terms of trade.',
+        options: ['rise', 'decline', 'freeze', 'doubling'], answer: 1 },
+      { at: 0.60, q: 'Export-oriented industrialization succeeded (where import substitution failed) because support was disciplined by…',
+        options: ['tariffs', 'world-market performance', 'subsidies', 'luck'], answer: 1 },
+      { at: 0.85, q: 'A global value chain lets a country industrialize by mastering a single ___ rather than a whole industry.',
+        options: ['tariff', 'task or stage', 'currency', 'election'], answer: 1 }
+    ],
+    14: [
+      { at: 0.30, q: 'The capstone’s method is: draw parameters, apply the ___, and produce a number.',
+        options: ['tariff', 'model', 'election', 'subsidy'], answer: 1 },
+      { at: 0.60, q: 'The optimal tariff equals the inverse of the foreign ___ elasticity.',
+        options: ['demand', 'export-supply', 'wage', 'tax'], answer: 1 },
+      { at: 0.85, q: 'In a log-linear gravity regression, the coefficient on log distance is typically about…',
+        options: ['0', '−1', '+10', '+1'], answer: 1 }
     ]
   };
 
@@ -51,6 +155,7 @@
   var lastActivity = Date.now();
   var checkpointState = {};    // idx -> 'pending'|'passed'
   var chip = null;
+  var chWin = { opens: null, closes: null };   // reading deadline window (class + student makeup)
 
   function ready(fn) { if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', fn); } else { fn(); } }
   function nowSec() { return Math.floor(Date.now() / 1000); }
@@ -173,14 +278,45 @@
       chip.innerHTML = '✅ <b>Reading verified</b> — credit recorded for Chapter ' + chapter;
       return;
     }
+    if (readingNotOpen()) {
+      chip.innerHTML = '🔒 Chapter ' + chapter + ' reading opens ' + new Date(chWin.opens).toLocaleString();
+      return;
+    }
+    if (readingClosed()) {
+      chip.innerHTML = '⛔ Chapter ' + chapter + ' reading closed ' + new Date(chWin.closes).toLocaleString() + ' — ask your instructor for a makeup.';
+      return;
+    }
     var cpline = cps.length ? (' · checks ' + passed + '/' + cps.length) : '';
+    var dueline = chWin.closes ? ('<div style="font-size:11px;color:var(--muted,#93a0ba);margin-top:3px;">Due ' + new Date(chWin.closes).toLocaleString() + '</div>') : '';
     chip.innerHTML = '📖 Chapter ' + chapter + ' — read <b>' + pct + '%</b>' + cpline
-      + '<div style="height:5px;background:var(--line,#2a2f3e);border-radius:3px;margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--green,#39c07f);"></div></div>';
+      + '<div style="height:5px;background:var(--line,#2a2f3e);border-radius:3px;margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--green,#39c07f);"></div></div>' + dueline;
   }
+
+  function loadWindow() {
+    chWin = { opens: null, closes: null };
+    if (!sbc || !courseId || !chapter) { renderChip(); return; }
+    var dP = sbc.from('it_reading_deadlines').select('opens_at,closes_at').eq('course_id', courseId).eq('chapter', chapter).maybeSingle();
+    var oP = user ? sbc.from('it_overrides').select('new_opens_at,new_deadline').eq('course_id', courseId).eq('student_id', user.id).eq('scope', 'reading').eq('quiz_chapter', chapter).maybeSingle() : Promise.resolve({ data: null });
+    Promise.all([dP, oP]).then(function (r) {
+      var dl = r[0], ov = (r[1] && !r[1].error) ? r[1].data : null;
+      if (dl && !dl.error && dl.data) {
+        if (dl.data.opens_at) { chWin.opens = new Date(dl.data.opens_at).getTime(); }
+        if (dl.data.closes_at) { chWin.closes = new Date(dl.data.closes_at).getTime(); }
+      }
+      if (ov) {   // a per-student makeup overrides the class deadline
+        if (ov.new_opens_at) { chWin.opens = new Date(ov.new_opens_at).getTime(); }
+        if (ov.new_deadline) { chWin.closes = new Date(ov.new_deadline).getTime(); }
+      }
+      renderChip();
+    }, function () { renderChip(); });
+  }
+  function readingNotOpen() { return !!(chWin.opens && Date.now() < chWin.opens); }
+  function readingClosed() { return !!(chWin.closes && Date.now() > chWin.closes); }
 
   function update() {
     renderChip();
     if (done || !user || !courseId) { return; }
+    if (readingNotOpen() || readingClosed()) { return; }   // outside the deadline window: no credit
     if (dwellFrac() >= COMPLETE_FRAC && endReached() && allCheckpointsPassed()) {
       writeDone();
     }
@@ -188,6 +324,7 @@
 
   function writeDone() {
     if (done || writing || !sbc || !user || !courseId) { return; }
+    if (readingNotOpen() || readingClosed()) { return; }
     writing = true;
     var row = { student_id: user.id, course_id: courseId, chapter: chapter, reading_done: true, updated_at: new Date().toISOString() };
     sbc.from('it_chapter_progress').upsert(row, { onConflict: 'student_id,course_id,chapter' }).then(function (res) {
@@ -222,6 +359,7 @@
         renderChip();
       }, function () {});
     }
+    loadWindow();
     renderChip();
   }
 

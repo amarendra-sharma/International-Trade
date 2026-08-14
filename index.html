@@ -1855,11 +1855,86 @@ function openSubmissions(asgId, title, points){
 
 function renderExams(host){
   if(!needCourse(host)){ return; }
-  host.innerHTML='<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button><button class="btn btn-ghost" id="libBtn">\uD83D\uDCDA Use a ready-made exam</button><button class="btn btn-ghost" id="quizDlBtn">\u23F0 Quiz deadlines</button></div><div id="examList">'+loadingCard()+'</div>';
+  host.innerHTML='<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button><button class="btn btn-ghost" id="libBtn">\uD83D\uDCDA Use a ready-made exam</button><button class="btn btn-ghost" id="quizDlBtn">\u23F0 Quiz deadlines</button><button class="btn btn-ghost" id="readDlBtn">\uD83D\uDCD6 Reading deadlines</button><button class="btn btn-ghost" id="arenaDlBtn">\uD83C\uDFAE Arena deadlines</button></div><div id="examList">'+loadingCard()+'</div>';
   $('newExamBtn').addEventListener('click', function(){ openAssembler(); });
   $('libBtn').addEventListener('click', function(){ openExamLibrary(); });
   $('quizDlBtn').addEventListener('click', function(){ openQuizDeadlines(); });
+  $('readDlBtn').addEventListener('click', function(){ openReadingDeadlines(); });
+  $('arenaDlBtn').addEventListener('click', function(){ openArenaDeadlines(); });
   loadExams();
+}
+
+
+function openReadingDeadlines(){
+  if(!State.teachCourseId){ alert('Select a course first.'); return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:560px;"><h3 style="margin-bottom:6px;">Reading deadlines</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Set an opens/closes window for each chapter’s <b>graded reading</b>. After the deadline the reading can no longer earn credit unless you grant a per-student makeup under <b>Roster → Extensions</b>. Leave both blank for no deadline.</p>'+
+    '<div style="display:flex;gap:10px;font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;"><span style="flex:1;"></span><span style="width:170px;">Opens</span><span style="width:170px;">Closes</span></div>'+
+    '<div id="rdlBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="rdlClose">Close</button><button class="btn btn-primary btn-sm" id="rdlSave">Save deadlines</button></div></div>';
+  document.body.appendChild(ov);
+  function shut(){ if(ov.parentNode){ document.body.removeChild(ov); } }
+  $('rdlClose').addEventListener('click', shut);
+  sb.from('it_reading_deadlines').select('chapter,opens_at,closes_at').eq('course_id',State.teachCourseId).then(function(res){
+    if(res && res.error){ $('rdlBody').innerHTML='<div class="msg err" style="display:block;">Reading deadlines are not installed yet. Run migration <b>008_reading_arena_deadlines.sql</b> in Supabase, then reopen.</div>'; var sv=$('rdlSave'); if(sv){ sv.disabled=true; } return; }
+    var o={},c={}; ((res&&res.data)?res.data:[]).forEach(function(r){ o[r.chapter]=r.opens_at; c[r.chapter]=r.closes_at; });
+    var html='';
+    STUDENT_CHAPTERS.forEach(function(ch){
+      html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><label style="flex:1;font-size:13px;">Ch '+ch.n+' · '+esc(ch.title)+'</label>'+
+        '<input type="datetime-local" data-rdl-open="'+ch.n+'" value="'+dtLocalValue(o[ch.n])+'" style="font-size:13px;padding:5px 8px;width:170px;">'+
+        '<input type="datetime-local" data-rdl-close="'+ch.n+'" value="'+dtLocalValue(c[ch.n])+'" style="font-size:13px;padding:5px 8px;width:170px;"></div>';
+    });
+    $('rdlBody').innerHTML=html;
+  }, function(){ $('rdlBody').innerHTML='<div class="msg err" style="display:block;">Could not load.</div>'; });
+  $('rdlSave').addEventListener('click', function(){
+    var byCh={};
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-rdl-open]'), function(inp){ var n=parseInt(inp.getAttribute('data-rdl-open'),10); (byCh[n]=byCh[n]||{}).open=inp.value; });
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-rdl-close]'), function(inp){ var n=parseInt(inp.getAttribute('data-rdl-close'),10); (byCh[n]=byCh[n]||{}).close=inp.value; });
+    var ups=[], dels=[];
+    Object.keys(byCh).forEach(function(k){ var n=parseInt(k,10); var o=byCh[k].open,c=byCh[k].close; if(!o&&!c){ dels.push(n); return; } ups.push({ course_id:State.teachCourseId, chapter:n, opens_at:(o?localToIso(o):null), closes_at:(c?localToIso(c):null), updated_at:new Date().toISOString() }); });
+    var btn=$('rdlSave'); btn.disabled=true; btn.textContent='Saving…';
+    var work=[];
+    if(ups.length){ work.push(sb.from('it_reading_deadlines').upsert(ups,{onConflict:'course_id,chapter'})); }
+    if(dels.length){ work.push(sb.from('it_reading_deadlines').delete().eq('course_id',State.teachCourseId).in('chapter',dels)); }
+    Promise.all(work).then(function(rs){ var err=null; rs.forEach(function(r){ if(r&&r.error){ err=r.error.message; } }); if(err){ btn.disabled=false; btn.textContent='Save deadlines'; alert('Could not save: '+err); return; } shut(); }, function(){ btn.disabled=false; btn.textContent='Save deadlines'; alert('Could not save.'); });
+  });
+}
+
+function openArenaDeadlines(){
+  if(!State.teachCourseId){ alert('Select a course first.'); return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:620px;"><h3 style="margin-bottom:6px;">Arena deadlines</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Set an opens/closes window for each <b>arena</b>. After the deadline the arena can no longer be played for credit unless you grant a per-student makeup under <b>Roster → Extensions</b>. Leave both blank for no deadline.</p>'+
+    '<div style="display:flex;gap:10px;font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;"><span style="flex:1;"></span><span style="width:170px;">Opens</span><span style="width:170px;">Closes</span></div>'+
+    '<div id="adlBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="adlClose">Close</button><button class="btn btn-primary btn-sm" id="adlSave">Save deadlines</button></div></div>';
+  document.body.appendChild(ov);
+  function shut(){ if(ov.parentNode){ document.body.removeChild(ov); } }
+  $('adlClose').addEventListener('click', shut);
+  sb.from('it_arena_deadlines').select('arena_slug,opens_at,closes_at').eq('course_id',State.teachCourseId).then(function(res){
+    if(res && res.error){ $('adlBody').innerHTML='<div class="msg err" style="display:block;">Arena deadlines are not installed yet. Run migration <b>008_reading_arena_deadlines.sql</b> in Supabase, then reopen.</div>'; var sv=$('adlSave'); if(sv){ sv.disabled=true; } return; }
+    var o={},c={}; ((res&&res.data)?res.data:[]).forEach(function(r){ o[r.arena_slug]=r.opens_at; c[r.arena_slug]=r.closes_at; });
+    var html='';
+    Object.keys(ARENA_TITLE).forEach(function(slug){
+      html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><label style="flex:1;font-size:13px;">'+esc(ARENA_TITLE[slug])+'</label>'+
+        '<input type="datetime-local" data-adl-open="'+slug+'" value="'+dtLocalValue(o[slug])+'" style="font-size:13px;padding:5px 8px;width:170px;">'+
+        '<input type="datetime-local" data-adl-close="'+slug+'" value="'+dtLocalValue(c[slug])+'" style="font-size:13px;padding:5px 8px;width:170px;"></div>';
+    });
+    $('adlBody').innerHTML=html;
+  }, function(){ $('adlBody').innerHTML='<div class="msg err" style="display:block;">Could not load.</div>'; });
+  $('adlSave').addEventListener('click', function(){
+    var by={};
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-adl-open]'), function(inp){ var sg=inp.getAttribute('data-adl-open'); (by[sg]=by[sg]||{}).open=inp.value; });
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-adl-close]'), function(inp){ var sg=inp.getAttribute('data-adl-close'); (by[sg]=by[sg]||{}).close=inp.value; });
+    var ups=[], dels=[];
+    Object.keys(by).forEach(function(sg){ var o=by[sg].open,c=by[sg].close; if(!o&&!c){ dels.push(sg); return; } ups.push({ course_id:State.teachCourseId, arena_slug:sg, opens_at:(o?localToIso(o):null), closes_at:(c?localToIso(c):null), updated_at:new Date().toISOString() }); });
+    var btn=$('adlSave'); btn.disabled=true; btn.textContent='Saving…';
+    var work=[];
+    if(ups.length){ work.push(sb.from('it_arena_deadlines').upsert(ups,{onConflict:'course_id,arena_slug'})); }
+    if(dels.length){ work.push(sb.from('it_arena_deadlines').delete().eq('course_id',State.teachCourseId).in('arena_slug',dels)); }
+    Promise.all(work).then(function(rs){ var err=null; rs.forEach(function(r){ if(r&&r.error){ err=r.error.message; } }); if(err){ btn.disabled=false; btn.textContent='Save deadlines'; alert('Could not save: '+err); return; } shut(); }, function(){ btn.disabled=false; btn.textContent='Save deadlines'; alert('Could not save.'); });
+  });
 }
 
 function openQuizDeadlines(){
@@ -3283,9 +3358,10 @@ function openOverridesModal(studentId, email){
   m.innerHTML='<div class="modal" style="max-width:600px;"><h2 style="margin-bottom:4px;">Extensions &amp; attempts</h2>'+
     '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">'+esc(email||'student')+' &middot; grant extra attempts or a new deadline for one exam, graded quiz, or assignment &mdash; e.g. after a missed deadline or a glitch that auto-submitted their work.</div>'+
     '<div id="ovMsg" class="msg"></div>'+
-    '<div class="field"><label>Applies to</label><select id="ovScope"><option value="exam">Exam</option><option value="quiz">Graded quiz (by chapter)</option><option value="assignment">Assignment</option></select></div>'+
+    '<div class="field"><label>Applies to</label><select id="ovScope"><option value="exam">Exam</option><option value="quiz">Graded quiz (by chapter)</option><option value="reading">Chapter reading</option><option value="arena">Arena</option><option value="assignment">Assignment</option></select></div>'+
     '<div class="field" id="ovTargetWrap"><label>Which one</label><select id="ovTarget"></select></div>'+
     '<div class="field hidden" id="ovChapterWrap"><label>Chapter number</label><input id="ovChapter" type="number" min="1" max="14" value="1"></div>'+
+    '<div class="field hidden" id="ovArenaWrap"><label>Which arena</label><select id="ovArena"></select></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
       '<div class="field"><label>Extra attempts</label><input id="ovExtra" type="number" min="0" value="1"></div>'+
       '<div class="field"><label>New deadline (optional)</label><input id="ovDeadline" type="datetime-local"></div>'+
@@ -3300,9 +3376,11 @@ function openOverridesModal(studentId, email){
   m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
   var exams=[], assignments=[];
   function fillTarget(){
-    var scope=$('ovScope').value, tw=$('ovTargetWrap'), cw=$('ovChapterWrap');
-    if(scope==='quiz'){ tw.classList.add('hidden'); cw.classList.remove('hidden'); return; }
-    tw.classList.remove('hidden'); cw.classList.add('hidden');
+    var scope=$('ovScope').value, tw=$('ovTargetWrap'), cw=$('ovChapterWrap'), aw=$('ovArenaWrap');
+    tw.classList.add('hidden'); cw.classList.add('hidden'); aw.classList.add('hidden');
+    if(scope==='quiz'||scope==='reading'){ cw.classList.remove('hidden'); return; }
+    if(scope==='arena'){ aw.classList.remove('hidden'); $('ovArena').innerHTML = Object.keys(ARENA_TITLE).map(function(sl){ return '<option value="'+sl+'">'+esc(ARENA_TITLE[sl])+'</option>'; }).join(''); return; }
+    tw.classList.remove('hidden');
     var list = scope==='exam'?exams:assignments;
     $('ovTarget').innerHTML = list.length ? list.map(function(x){ return '<option value="'+x.id+'">'+esc(x.title)+'</option>'; }).join('') : '<option value="">(none yet)</option>';
   }
@@ -3350,7 +3428,8 @@ function openOverridesModal(studentId, email){
       new_opens_at: $('ovOpens').value ? localToIso($('ovOpens').value) : null,
       note: $('ovNote').value.trim()||null, created_by: State.user.id, updated_at:new Date().toISOString() };
     var delq = sb.from('it_overrides').delete().eq('course_id',courseId).eq('student_id',studentId).eq('scope',scope);
-    if(scope==='quiz'){ row.quiz_chapter=parseInt($('ovChapter').value,10)||1; delq=delq.eq('quiz_chapter',row.quiz_chapter); }
+    if(scope==='quiz'||scope==='reading'){ row.quiz_chapter=parseInt($('ovChapter').value,10)||1; delq=delq.eq('quiz_chapter',row.quiz_chapter); }
+    else if(scope==='arena'){ row.arena_slug=$('ovArena').value||null; if(!row.arena_slug){ $('ovMsg').textContent='Select an arena.'; $('ovMsg').className='msg err'; return; } delq=delq.eq('arena_slug',row.arena_slug); }
     else if(scope==='exam'){ row.exam_id=$('ovTarget').value||null; if(!row.exam_id){ $('ovMsg').textContent='Select an exam.'; $('ovMsg').className='msg err'; return; } delq=delq.eq('exam_id',row.exam_id); }
     else { row.assignment_id=$('ovTarget').value||null; if(!row.assignment_id){ $('ovMsg').textContent='Select an assignment.'; $('ovMsg').className='msg err'; return; } delq=delq.eq('assignment_id',row.assignment_id); }
     $('ovSave').disabled=true;
@@ -3670,30 +3749,43 @@ function renderArenas() {
   var courseId = State.payCourseId || State.selfCourseId;
   // Count this student's attempts per arena so we can enforce the 2-attempt cap
   // and show remaining attempts. (Guests / not-signed-in: no cap shown.)
-  var countBy = {};
+  var countBy = {}, winBy = {}, ovrBy = {};
   function paint(){
     g.innerHTML = '';
     Object.keys(ARENA_TITLE).forEach(function(slug) {
       var file = ARENA_FILE[slug];
       var locked = arenaLocked(slug);
       var used = countBy[slug] ? countBy[slug] : 0;
-      var capped = used >= ARENA_MAX_ATTEMPTS;
+      var ovr = ovrBy[slug];
+      var cap = ARENA_MAX_ATTEMPTS + (ovr && ovr.extra_attempts ? Number(ovr.extra_attempts) : 0);
+      var win = winBy[slug] || {};
+      var effOpen = (ovr && ovr.new_opens_at) ? ovr.new_opens_at : win.opens;
+      var effClose = (ovr && ovr.new_deadline) ? ovr.new_deadline : win.closes;
+      var nowT = Date.now();
+      var notOpen = !!(effOpen && nowT < new Date(effOpen).getTime());
+      var closed = !!(effClose && nowT > new Date(effClose).getTime());
+      var capped = used >= cap;
       var div = document.createElement('div');
       div.className = 'card launch';
       var pill;
       if (!file) { pill = '<div class="pill soon">Coming soon</div>'; }
       else if (locked) { pill = '<div class="pill soon">🔒 Subscribe to unlock</div>'; }
-      else if (capped) { pill = '<div class="pill soon">Attempts used (' + used + '/' + ARENA_MAX_ATTEMPTS + ')</div>'; }
-      else { pill = '<div class="pill">Play → ' + (uid ? '(' + (ARENA_MAX_ATTEMPTS - used) + ' left)' : '') + '</div>'; }
+      else if (notOpen) { pill = '<div class="pill soon">\uD83D\uDD12 Opens ' + new Date(effOpen).toLocaleString() + '</div>'; }
+      else if (closed) { pill = '<div class="pill soon">\u26D4 Closed</div>'; }
+      else if (capped) { pill = '<div class="pill soon">Attempts used (' + used + '/' + cap + ')</div>'; }
+      else { pill = '<div class="pill">Play → ' + (uid ? '(' + (cap - used) + ' left)' : '') + '</div>'; }
       div.innerHTML =
         '<div class="c-eyebrow">Arena' + (FREE_ARENAS[slug] ? ' · Free' : '') + '</div>' +
         '<div class="c-title">' + esc(ARENA_TITLE[slug]) + '</div>' +
         '<div class="c-meta mono">' + esc(slug) + '</div>' + pill;
-      if (file && !locked && !capped) {
+      if (file && !locked && !capped && !notOpen && !closed) {
         div.addEventListener('click', function() { window.open(file, '_blank'); });
       } else if (file && locked) {
         div.style.opacity = '.7';
         div.addEventListener('click', function() { openSubscribePrompt(ARENA_TITLE[slug] + ' arena'); });
+      } else if (file && (notOpen || closed)) {
+        div.style.opacity = '.6'; div.style.cursor = 'default';
+        div.addEventListener('click', function() { alert(notOpen ? ('This arena opens ' + new Date(effOpen).toLocaleString() + '.') : ('This arena closed ' + new Date(effClose).toLocaleString() + '. Ask your instructor for a makeup (Roster \u2192 Extensions).')); });
       } else if (file && capped) {
         div.style.opacity = '.6'; div.style.cursor = 'default';
         div.addEventListener('click', function() { alert('You have used both graded attempts for the ' + ARENA_TITLE[slug] + ' arena. Your grade uses the average of your two attempts.'); });
@@ -3704,13 +3796,16 @@ function renderArenas() {
     });
   }
   if (uid) {
-    var q = sb.from('it_arena_results').select('arena_slug').eq('student_id', uid);
-    if (courseId) { q = q.eq('course_id', courseId); }
-    q.then(function(res){
-      var rows = res.data ? res.data : [];
-      rows.forEach(function(r){ countBy[r.arena_slug] = (countBy[r.arena_slug] || 0) + 1; });
+    var qR = sb.from('it_arena_results').select('arena_slug').eq('student_id', uid);
+    if (courseId) { qR = qR.eq('course_id', courseId); }
+    var qD = courseId ? sb.from('it_arena_deadlines').select('arena_slug,opens_at,closes_at').eq('course_id', courseId) : Promise.resolve({ data: [] });
+    var qO = courseId ? sb.from('it_overrides').select('arena_slug,extra_attempts,new_opens_at,new_deadline').eq('student_id', uid).eq('course_id', courseId).eq('scope','arena') : Promise.resolve({ data: [] });
+    Promise.all([qR, qD, qO]).then(function(r){
+      ((r[0]&&r[0].data)?r[0].data:[]).forEach(function(x){ countBy[x.arena_slug] = (countBy[x.arena_slug] || 0) + 1; });
+      ((r[1]&&r[1].data)?r[1].data:[]).forEach(function(x){ winBy[x.arena_slug] = { opens:x.opens_at, closes:x.closes_at }; });
+      ((r[2]&&r[2].data)?r[2].data:[]).forEach(function(x){ if(x.arena_slug){ ovrBy[x.arena_slug] = x; } });
       paint();
-    });
+    }, function(){ paint(); });
   } else {
     paint();
   }
