@@ -3532,8 +3532,15 @@ function resolveAccess() {
   // non-staff holds only self-owned practice courses) is the wrong source here.
   // Look up the student's ACTUAL active enrollments; otherwise a super-admin fee
   // waiver on the enrolled course is never seen and the student hits the paywall.
-  return sb.from('it_enrollments').select('course_id').eq('student_id', uid).eq('status','active').then(function(enr){
-    var enrolledCourseIds = (enr && enr.data ? enr.data : []).map(function(e){ return e.course_id; });
+  return sb.from('it_enrollments').select('course_id, it_courses(requires_payment, owner_id)').eq('student_id', uid).eq('status','active').then(function(enr){
+    var rows = (enr && enr.data ? enr.data : []);
+    var enrolledCourseIds = rows.map(function(e){ return e.course_id; });
+    // A course the instructor marked FREE (requires_payment = false) grants full
+    // access on its own -- no waiver or subscription needed.
+    for (var fk = 0; fk < rows.length; fk++) {
+      var fc = rows[fk].it_courses;
+      if (fc && fc.requires_payment === false && fc.owner_id !== uid) { State.hasAccess = true; return true; }
+    }
     var waiverP = enrolledCourseIds.length
       ? sb.from('it_fee_waivers').select('course_id,student_id').in('course_id', enrolledCourseIds)
       : Promise.resolve({ data: [] });
@@ -4674,7 +4681,19 @@ function loadMyGrades(){
 function computeWeightedGrade(callback){
   var uid = State.user ? State.user.id : null;
   var courseId = State.payCourseId || State.selfCourseId;
-  if (!uid || !courseId) { callback(null); return; }
+  if (!uid) { callback(null); return; }
+  if (!courseId) {
+    // Self-heal: app state didn't have a course yet -- resolve it from the
+    // student's ACTIVE enrollments (prefer a professor's course), then retry.
+    sb.from('it_enrollments').select('course_id, it_courses(owner_id)').eq('student_id', uid).eq('status','active').then(function(er){
+      var rows = er && er.data ? er.data : [], prof = null, any = null;
+      rows.forEach(function(r){ any = any || r; var o = r.it_courses ? r.it_courses.owner_id : null; if (o && o !== uid && !prof) { prof = r; } });
+      var cid = (prof || any) ? (prof || any).course_id : null;
+      if (cid) { State.payCourseId = State.payCourseId || cid; computeWeightedGrade(callback); }
+      else { callback(null); }
+    }, function(){ callback(null); });
+    return;
+  }
   Promise.all([
     sb.from('it_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final,required_arenas').eq('id', courseId).maybeSingle(),
     sb.from('it_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
