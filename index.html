@@ -342,6 +342,7 @@
       <div class="page-sub">Your strategic-thinking workspace. Pick up where you left off.</div>
       <div class="stat-row" id="homeStats"></div>
       <div class="grid grid-3" id="homeQuick"></div>
+      <div id="homeDeadlines"></div>
       <div id="homeCourses"></div>
     </section>
     <section id="view-myannounce" class="hidden" aria-labelledby="myAnnTitle">
@@ -1481,10 +1482,14 @@ function renderGradebook(host){
   // 1) gradebook view rows, 2) published exams, 3) exam attempts, + assignments/overrides
   Promise.all([
     sb.from('it_gradebook_v').select('*').eq('course_id',State.teachCourseId),
-    sb.from('it_exams').select('id,kind,total_points,is_published,attempt_scoring').eq('course_id',State.teachCourseId).eq('is_published',true)
+    sb.from('it_exams').select('id,kind,total_points,is_published,attempt_scoring').eq('course_id',State.teachCourseId).eq('is_published',true),
+    sb.from('it_chapter_progress').select('student_id,quiz_score').eq('course_id',State.teachCourseId)
   ]).then(function(r){
     var rows=r[0].data?r[0].data:[];
     var exams=r[1].data?r[1].data:[];
+    // Quiz component = sum(quiz_score) / 14 chapters (unattempted quizzes count as 0),
+    // matching how Reading and the student My Grades view are computed.
+    var quizSumBy={}; (r[2].data?r[2].data:[]).forEach(function(p){ if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSumBy[p.student_id]=(quizSumBy[p.student_id]||0)+Number(p.quiz_score); } });
     var midterm=exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin=exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
@@ -1547,17 +1552,17 @@ function renderGradebook(host){
         var asgScore={};
         Object.keys(earn).forEach(function(sid){ asgScore[sid]= poss[sid]>0 ? (earn[sid]/poss[sid]) : null; });
         var overrideOf={}; ovr.forEach(function(o){ overrideOf[o.student_id]={ pct:o.override_pct, note:o.note }; });
-        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf);
+        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy);
       });
     });
   });
 }
-function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf){
-  asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {};
+function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy){
+  asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {}; quizSumBy = quizSumBy || {};
   if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
   var computed=rows.map(function(r){
     var reading=r.chapters_read/14;
-    var quizzes=(r.avg_quiz_score!==null&&r.avg_quiz_score!==undefined&&r.avg_quiz_score>0)?Number(r.avg_quiz_score):(r.quizzes_passed/14);
+    var quizzes=(quizSumBy[r.student_id]!==undefined)?(quizSumBy[r.student_id]/14):(r.quizzes_passed/14);
     var arenas=(arenaScoreOf[r.student_id]!==undefined)?arenaScoreOf[r.student_id]:0;
     var midScore=(midterm&&midterm.total_points)?((examScore[r.student_id]&&examScore[r.student_id].midterm?examScore[r.student_id].midterm:0)/midterm.total_points):null;
     var finScore=(fin&&fin.total_points)?((examScore[r.student_id]&&examScore[r.student_id].final?examScore[r.student_id].final:0)/fin.total_points):null;
@@ -3888,6 +3893,7 @@ function loadHome() {
   if (jc) { jc.addEventListener('click', openJoinCourse); }
   // show the student's enrolled professor courses (if any)
   loadMyCourses();
+  loadHomeDeadlines();
 }
 function loadMyAnnounce(){
   var box=$('myAnnBody'); if(!box || !State.user){ return; }
@@ -3969,6 +3975,85 @@ function loadMyCourses() {
     html += '</div>';
     $('homeCourses').innerHTML = html;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Course deadlines panel (student home). Shows EVERY scheduled deadline across
+// quizzes, readings, arenas, exams, and assignments -- including items that have
+// not opened yet -- so students can plan ahead. Per-student makeup overrides
+// (it_overrides) replace the class dates where present.
+function loadHomeDeadlines(){
+  var host=$('homeDeadlines'); if(!host || !State.user){ return; }
+  var uid=State.user.id;
+  sb.from('it_enrollments').select('course_id, it_courses(title,owner_id)').eq('student_id',uid).eq('status','active').then(function(en){
+    var rows=en.data?en.data:[];
+    // only professor-taught courses have instructor-set deadlines
+    var courses=rows.filter(function(r){ return r.it_courses && r.it_courses.owner_id!==uid; });
+    var ids=courses.map(function(r){ return r.course_id; });
+    if(ids.length===0){ host.innerHTML=''; return; }
+    var titleOf={}; courses.forEach(function(r){ titleOf[r.course_id]=r.it_courses?r.it_courses.title:'Course'; });
+    Promise.all([
+      sb.from('it_quiz_deadlines').select('course_id,chapter,opens_at,closes_at').in('course_id',ids),
+      sb.from('it_reading_deadlines').select('course_id,chapter,opens_at,closes_at').in('course_id',ids),
+      sb.from('it_arena_deadlines').select('course_id,arena_slug,opens_at,closes_at').in('course_id',ids),
+      sb.from('it_exams').select('course_id,kind,title,opens_at,closes_at').in('course_id',ids).eq('is_published',true),
+      sb.from('it_assignments').select('course_id,title,due_at').in('course_id',ids).eq('is_published',true),
+      sb.from('it_overrides').select('course_id,scope,quiz_chapter,arena_slug,new_opens_at,new_deadline').eq('student_id',uid)
+    ]).then(function(r){
+      var qd=r[0].data||[], rd=r[1].data||[], ad=r[2].data||[], ex=r[3].data||[], asg=r[4].data||[], ov=r[5].data||[];
+      // index overrides for quick lookup
+      var ovKey={}; ov.forEach(function(o){
+        var k=null;
+        if(o.scope==='quiz' && o.quiz_chapter!=null){ k=o.course_id+'|quiz|'+o.quiz_chapter; }
+        else if(o.scope==='reading' && o.quiz_chapter!=null){ k=o.course_id+'|reading|'+o.quiz_chapter; }
+        else if(o.scope==='arena' && o.arena_slug){ k=o.course_id+'|arena|'+o.arena_slug; }
+        if(k){ ovKey[k]=o; }
+      });
+      var items=[];
+      function chTitle(n){ var c=CHAPTERS.filter(function(x){return x.n===n;})[0]; return c?('Ch '+n+' · '+c.title):('Chapter '+n); }
+      qd.forEach(function(d){ var o=ovKey[d.course_id+'|quiz|'+d.chapter]||{}; items.push({type:'Quiz',icon:'✍️',label:chTitle(d.chapter)+' — quiz',course:titleOf[d.course_id],opens:o.new_opens_at||d.opens_at,closes:o.new_deadline||d.closes_at,makeup:!!(o.new_opens_at||o.new_deadline)}); });
+      rd.forEach(function(d){ var o=ovKey[d.course_id+'|reading|'+d.chapter]||{}; items.push({type:'Reading',icon:'📖',label:chTitle(d.chapter)+' — reading',course:titleOf[d.course_id],opens:o.new_opens_at||d.opens_at,closes:o.new_deadline||d.closes_at,makeup:!!(o.new_opens_at||o.new_deadline)}); });
+      ad.forEach(function(d){ var o=ovKey[d.course_id+'|arena|'+d.arena_slug]||{}; items.push({type:'Arena',icon:'🎮',label:(ARENA_TITLE[d.arena_slug]||d.arena_slug)+' — arena',course:titleOf[d.course_id],opens:o.new_opens_at||d.opens_at,closes:o.new_deadline||d.closes_at,makeup:!!(o.new_opens_at||o.new_deadline)}); });
+      ex.forEach(function(e){ items.push({type:'Exam',icon:'📝',label:(e.title||(e.kind==='final'?'Final exam':'Midterm')),course:titleOf[e.course_id],opens:e.opens_at,closes:e.closes_at,makeup:false}); });
+      asg.forEach(function(a){ items.push({type:'Assignment',icon:'📄',label:(a.title||'Assignment'),course:titleOf[a.course_id],opens:null,closes:a.due_at,makeup:false}); });
+      // keep only items that carry at least one date
+      items=items.filter(function(it){ return it.opens||it.closes; });
+      if(items.length===0){ host.innerHTML=''; return; }
+      var now=Date.now();
+      function ms(x){ return x?new Date(x).getTime():null; }
+      // sort key: soonest relevant future date first; past-due sink to the bottom
+      items.forEach(function(it){
+        var c=ms(it.closes), o=ms(it.opens);
+        var key = (c!=null && c>=now) ? c : (o!=null && o>=now) ? o : (c!=null ? c : o);
+        it._key=key; it._past=(c!=null && c<now);
+      });
+      items.sort(function(a,b){ if(a._past!==b._past){ return a._past?1:-1; } return (a._key||0)-(b._key||0); });
+      function fmt(x){ return new Date(x).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
+      var multi=ids.length>1;
+      var rowsHtml='';
+      items.forEach(function(it){
+        var c=ms(it.closes), o=ms(it.opens);
+        var status, cls;
+        if(c!=null && c<now){ status='Closed · '+fmt(it.closes); cls='rose'; }
+        else if(o!=null && o>now){ status='Opens '+fmt(it.opens)+(it.closes?(' · due '+fmt(it.closes)):''); cls='dim'; }
+        else if(it.closes){ status='Due '+fmt(it.closes); cls=(c-now < 3*864e5)?'amber':'green'; }
+        else { status='Open now'; cls='green'; }
+        rowsHtml+='<tr>'+
+          '<th scope="row" style="font-weight:500;"><span aria-hidden="true" style="margin-right:7px;">'+it.icon+'</span>'+esc(it.label)+
+            (it.makeup?' <span class="tag violet" title="personal makeup deadline">makeup</span>':'')+
+            (multi?('<div style="font-size:11px;color:var(--text-subtle);">'+esc(it.course)+'</div>'):'')+'</th>'+
+          '<td><span class="tag dim">'+it.type+'</span></td>'+
+          '<td><span class="tag '+cls+'">'+esc(status)+'</span></td></tr>';
+      });
+      var h='<div class="card" style="margin:26px 0 12px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'+
+        '<h3 style="font-size:18px;margin:0;">Course deadlines</h3>'+
+        '<span style="font-size:11.5px;color:var(--text-subtle);">All scheduled dates, including items that haven’t opened yet.</span></div>'+
+        '<div class="tbl-wrap"><table class="tbl"><caption class="sr-only">Upcoming course deadlines</caption>'+
+        '<thead><tr><th scope="col">Item</th><th scope="col">Type</th><th scope="col">When</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
+      host.innerHTML=h;
+    }, function(){ host.innerHTML=''; });
+  }, function(){ host.innerHTML=''; });
 }
 
 function statCard(num, label) {
