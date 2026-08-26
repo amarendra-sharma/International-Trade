@@ -672,7 +672,16 @@ function enterApp(user){
   if(role==='instructor' || role==='admin'){
     loadCourses().then(function(){ switchView('home'); });
   } else {
-    switchView('home');
+    loadStaffCourses().then(function(isTA){
+      if(isTA){
+        State.isTA=true;
+        if($('sideRole')){ $('sideRole').textContent='Teaching Assistant'; }
+        show($('teachGroup'));
+        rebuildCoursePicker();
+        applyTARestrictions();
+      }
+      switchView('home');
+    });
   }
 }
 // Guest preview: enter the app with no account. Free content only — Textbook
@@ -781,7 +790,104 @@ function loadCourses(){
   });
 }
 function findCourse(id){ for(var i=0;i<State.courses.length;i++){ if(State.courses[i].id===id){ return State.courses[i]; } } return null; }
-$('coursePick').addEventListener('change', function(){ State.teachCourseId=$('coursePick').value; rerenderCurrentView(); });
+/* ---- Teaching-assistant (course staff) capability helpers ----------------
+   A TA is a 'student'-role account granted powers on ONE course via
+   it_course_staff. Owner/admin always have every power on their courses. --- */
+function isOwnerOrAdmin(){ return State.role==='instructor' || State.role==='admin'; }
+function staffRow(cid){ cid=cid||State.teachCourseId; var a=State.staff||[]; for(var i=0;i<a.length;i++){ if(a[i].course_id===cid){ return a[i]; } } return null; }
+function canViewCourse(cid){ if(isOwnerOrAdmin()){ return true; } var s=staffRow(cid); return !!(s && (s.can_view||s.can_grade||s.can_edit)); }
+function canGradeCourse(cid){ if(isOwnerOrAdmin()){ return true; } var s=staffRow(cid); return !!(s && (s.can_grade||s.can_edit)); }
+function canEditCourse(cid){ if(isOwnerOrAdmin()){ return true; } var s=staffRow(cid); return !!(s && s.can_edit); }
+// Load the courses where THIS user is a TA; returns true if any (=> TA mode).
+function loadStaffCourses(){
+  if(!State.user){ State.staff=[]; return Promise.resolve(false); }
+  return sb.from('it_course_staff').select('course_id,can_view,can_grade,can_edit, it_courses(*)').eq('user_id',State.user.id).then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ State.staff=[]; return false; }
+    State.staff=rows.map(function(r){ return { course_id:r.course_id, can_view:r.can_view, can_grade:r.can_grade, can_edit:r.can_edit }; });
+    State.courses=rows.map(function(r){ return r.it_courses; }).filter(Boolean);
+    if(State.courses.length && !State.teachCourseId){ State.teachCourseId=State.courses[0].id; }
+    return true;
+  }, function(){ State.staff=[]; return false; });
+}
+// Show only the Teach tabs a TA is entitled to (owner/admin see all elsewhere).
+function applyTARestrictions(){
+  if(!State.isTA){ return; }
+  var cid=State.teachCourseId;
+  var vis={ dashboard:false, courses:false, flags:false,
+            roster:canViewCourse(cid), gradebook:canViewCourse(cid), analytics:canViewCourse(cid),
+            grading:canGradeCourse(cid),
+            materials:canEditCourse(cid), announce:canEditCourse(cid), exams:canEditCourse(cid), assignments:canEditCourse(cid) };
+  Object.keys(vis).forEach(function(v){
+    var it=document.querySelector('#teachGroup .nav-item[data-view="'+v+'"]');
+    if(it){ it.classList.toggle('hidden', !vis[v]); }
+  });
+}
+// Owner/admin only: add TAs to a course and choose their powers.
+function openManageTAs(course){
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:640px;"><h2>Teaching assistants</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Give a TA access to <b>'+esc(course.title||'this course')+'</b>. Pick exactly what each TA can do. Changes take effect the next time the TA signs in.</div>'+
+    '<div id="taMsg" class="msg"></div>'+
+    '<div class="field"><label>Add a TA by email (they must have signed up first)</label><input id="taEmail" type="email" placeholder="ta@university.edu"></div>'+
+    '<div class="inline-actions" style="gap:16px;flex-wrap:wrap;margin:2px 0 10px;">'+
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="taCanView" checked> View (roster, gradebook, student work)</label>'+
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="taCanGrade" checked> Grade (finalize scores, overrides)</label>'+
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="taCanEdit"> Edit (exams, deadlines, assignments)</label>'+
+    '</div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;margin-bottom:8px;"><button class="btn btn-primary btn-sm" id="taAdd">Add TA</button></div>'+
+    '<div id="taList">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;margin-top:14px;"><button class="btn btn-ghost" id="taClose">Close</button></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  function msg(t,ok){ var e=$('taMsg'); e.textContent=t; e.className='msg '+(ok?'ok':'err'); e.style.display='block'; }
+  $('taClose').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  function refresh(){
+    sb.from('it_course_staff').select('user_id,can_view,can_grade,can_edit, it_profiles(email,full_name)').eq('course_id',course.id).then(function(r){
+      var rows=r.data?r.data:[];
+      if(rows.length===0){ $('taList').innerHTML='<div class="card empty">No TAs yet.</div>'; return; }
+      var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>TA</th><th>View</th><th>Grade</th><th>Edit</th><th></th></tr></thead><tbody>';
+      rows.forEach(function(t){
+        var p=t.it_profiles||{}; var who=esc(p.full_name||p.email||t.user_id);
+        function ck(field,val){ return '<input type="checkbox" data-uid="'+t.user_id+'" data-cap="'+field+'"'+(val?' checked':'')+'>'; }
+        h+='<tr><th scope="row" style="font-weight:500;">'+who+(p.full_name?('<div style="font-weight:400;font-size:11px;color:var(--text-subtle);">'+esc(p.email||'')+'</div>'):'')+'</th>'+
+          '<td>'+ck('can_view',t.can_view)+'</td><td>'+ck('can_grade',t.can_grade)+'</td><td>'+ck('can_edit',t.can_edit)+'</td>'+
+          '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-tasave="'+t.user_id+'">Save</button> <button class="btn btn-danger btn-sm" data-tarem="'+t.user_id+'">Remove</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+      $('taList').innerHTML=h;
+      Array.prototype.forEach.call($('taList').querySelectorAll('[data-tasave]'), function(b){ b.addEventListener('click', function(){
+        var uid=b.getAttribute('data-tasave');
+        var caps={}; Array.prototype.forEach.call($('taList').querySelectorAll('[data-uid="'+uid+'"]'), function(cb){ caps[cb.getAttribute('data-cap')]=cb.checked; });
+        b.disabled=true;
+        sb.from('it_course_staff').update(caps).eq('course_id',course.id).eq('user_id',uid).then(function(u){ b.disabled=false; if(u.error){ msg(u.error.message,false); } else { msg('Saved.',true); } });
+      }); });
+      Array.prototype.forEach.call($('taList').querySelectorAll('[data-tarem]'), function(b){ b.addEventListener('click', function(){
+        var uid=b.getAttribute('data-tarem');
+        sb.from('it_course_staff').delete().eq('course_id',course.id).eq('user_id',uid).then(function(d){ if(d.error){ msg(d.error.message,false); } else { refresh(); } });
+      }); });
+    });
+  }
+  $('taAdd').addEventListener('click', function(){
+    var email=($('taEmail').value||'').trim().toLowerCase();
+    if(!email){ msg('Enter an email.',false); return; }
+    $('taAdd').disabled=true;
+    sb.from('it_profiles').select('id').eq('email',email).maybeSingle().then(function(res){
+      if(res.error || !res.data){ msg('No account found with that email. The TA must sign up first.',false); $('taAdd').disabled=false; return; }
+      var row={ course_id:course.id, user_id:res.data.id, role:'ta',
+                can_view:$('taCanView').checked, can_grade:$('taCanGrade').checked, can_edit:$('taCanEdit').checked,
+                added_by:State.user.id };
+      sb.from('it_course_staff').upsert(row,{onConflict:'course_id,user_id'}).then(function(ins){
+        $('taAdd').disabled=false;
+        if(ins.error){ msg(ins.error.message,false); return; }
+        $('taEmail').value=''; msg('TA added.',true); refresh();
+      });
+    });
+  });
+  refresh();
+}
+$('coursePick').addEventListener('change', function(){ State.teachCourseId=$('coursePick').value; if(State.isTA){ applyTARestrictions(); if(!viewAllowed(currentView)){ switchView('home'); return; } } rerenderCurrentView(); });
 
 /* ====================================================================
    NAV
@@ -835,10 +941,18 @@ initModalA11y();
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
 var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading','flags'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics','reviews'];
+function taViewAllowed(view){
+  if(!State.isTA){ return false; }
+  var cid=State.teachCourseId;
+  if(view==='roster'||view==='gradebook'||view==='analytics'){ return canViewCourse(cid); }
+  if(view==='grading'){ return canGradeCourse(cid); }
+  if(view==='materials'||view==='announce'||view==='exams'||view==='assignments'){ return canEditCourse(cid); }
+  return false;   // dashboard, courses, flags are not available to TAs
+}
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
   if(ADMIN_VIEWS.indexOf(view)>=0){ return State.role==='admin'; }
-  if(INSTRUCTOR_VIEWS.indexOf(view)>=0){ return State.role==='instructor' || State.role==='admin'; }
+  if(INSTRUCTOR_VIEWS.indexOf(view)>=0){ return State.role==='instructor' || State.role==='admin' || taViewAllowed(view); }
   return true;
 }
 function switchView(view){
@@ -1191,11 +1305,13 @@ function loadAnnounceList(){
 function renderRoster(host){
   if(!needCourse(host)){ return; }
   var c=findCourse(State.teachCourseId);
+  var rEdit=canEditCourse(c.id), rOwner=isOwnerOrAdmin();
   host.innerHTML='<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">'+
     '<div>Students join with code <span class="pill-code">'+esc(c.join_code)+'</span> in the student app.</div>'+
-    '<button class="btn btn-ghost btn-sm" id="addStudentBtn">+ Add student by email</button></div>'+
+    '<div class="inline-actions">'+(rEdit?'<button class="btn btn-ghost btn-sm" id="addStudentBtn">+ Add student by email</button>':'')+(rOwner?' <button class="btn btn-ghost btn-sm" id="manageTAsBtn">\uD83C\uDF93 Teaching assistants</button>':'')+'</div></div>'+
     '<div id="rosterBody">'+loadingCard()+'</div>';
-  $('addStudentBtn').addEventListener('click', openAddStudent);
+  if($('addStudentBtn')){ $('addStudentBtn').addEventListener('click', openAddStudent); }
+  if($('manageTAsBtn')){ $('manageTAsBtn').addEventListener('click', function(){ openManageTAs(c); }); }
   loadRoster();
 }
 function loadRoster(){
@@ -1207,6 +1323,7 @@ function loadRoster(){
     var accoms=rr[1].data?rr[1].data:[];
     var accomBy={}; accoms.forEach(function(a){ accomBy[a.student_id]=a; });
     var rows=res.data?res.data:[];
+    var rce=canEditCourse(State.teachCourseId);
     if(rows.length===0){ $('rosterBody').innerHTML='<div class="card empty">No students enrolled yet.</div>'; return; }
     var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Accommodation</th><th>Enrolled</th><th></th></tr></thead><tbody>';
     rows.forEach(function(r){
@@ -1220,9 +1337,9 @@ function loadRoster(){
       html+='<tr><td>'+esc(p.full_name||'(no name yet)')+'</td><td>'+esc(p.email||r.student_id)+'</td><td>'+st+'</td>'+
         '<td>'+acLabel+'</td>'+
         '<td>'+esc(r.enrolled_at?new Date(r.enrolled_at).toLocaleDateString():'-')+'</td>'+
-        '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-accom="'+r.student_id+'" data-email="'+esc(p.email||'')+'">Accommodate</button>'+
+        '<td class="inline-actions">'+(rce?('<button class="btn btn-ghost btn-sm" data-accom="'+r.student_id+'" data-email="'+esc(p.email||'')+'">Accommodate</button>'+
         '<button class="btn btn-ghost btn-sm" data-ext="'+r.student_id+'" data-email="'+esc(p.email||'')+'">Extensions</button>'+
-        '<button class="btn btn-ghost btn-sm" data-drop="'+r.id+'" data-st="'+esc(r.status)+'">'+(r.status==='active'?'Drop':'Reactivate')+'</button></td></tr>';
+        '<button class="btn btn-ghost btn-sm" data-drop="'+r.id+'" data-st="'+esc(r.status)+'">'+(r.status==='active'?'Drop':'Reactivate')+'</button>'):'<span class="tag dim">view only</span>')+'</td></tr>';
     });
     html+='</tbody></table></div>';
     $('rosterBody').innerHTML=html;
@@ -1559,6 +1676,7 @@ function renderGradebook(host){
 }
 function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy){
   asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {}; quizSumBy = quizSumBy || {};
+  var canGrade=canGradeCourse(c.id);
   if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
   var computed=rows.map(function(r){
     var reading=r.chapters_read/14;
@@ -1581,7 +1699,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+    '<div style="display:flex;gap:8px;">'+(canGrade?'<button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button>':'')+'<button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+(g.name?('<div style="font-weight:400;font-size:11px;color:var(--text-subtle);">'+esc(g.email)+'</div>'):'')+'</th><td>'+subTag(g.sub)+'</td>'+
@@ -1590,9 +1708,9 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':pct(g.midterm))+'</td>'+
       '<td>'+(g.final===null?'<span class="tag dim">--</span>':pct(g.final))+'</td>'+
       '<td>'+pct(g.computed)+'</td>'+
-      '<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'+
+      (canGrade?('<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'):('<td>'+(g.override?(esc(String(g.override.pct))+'%'):'\u2014')+'</td>'))+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
+      '<td>'+(canGrade?'<button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> ':'')+'<button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
