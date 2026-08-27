@@ -445,6 +445,28 @@ var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
 var IT_BUILD = 'intltrade-phase1-2026-07';
 var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ---- Password-reset (recovery) handling ---------------------------------
+// A reset link returns the user to this page with a recovery token in the URL
+// (implicit flow: #...&type=recovery) or an error (#error=...&error_description).
+// We must catch this BEFORE the normal getSession()->onSignedIn() bootstrap,
+// or the app would silently sign the user in and skip the "new password" step.
+var RECOVERY_MODE = false;
+function parseAuthHash(){
+  var out={ type:null, error:null, error_desc:null, code:null };
+  try{
+    var hp=new URLSearchParams((window.location.hash||'').replace(/^#/,''));
+    var qp=new URLSearchParams((window.location.search||'').replace(/^\?/,''));
+    out.type=hp.get('type')||qp.get('type');
+    out.error=hp.get('error')||qp.get('error');
+    out.error_desc=hp.get('error_description')||qp.get('error_description');
+    out.code=qp.get('code');
+  }catch(e){}
+  return out;
+}
+// Register the recovery listener as early as possible so it is never missed.
+sb.auth.onAuthStateChange(function(event){ if(event==='PASSWORD_RECOVERY'){ showRecoveryUI(); } });
+// Also detect it synchronously from the URL (covers event-timing races).
+(function(){ var ah=parseAuthHash(); if(ah && ah.type==='recovery'){ RECOVERY_MODE=true; } })();
 // Shared MacroNations proctoring engine. Point it at International Trade's existing
 // table/bucket so no data migration is needed.
 if(typeof MNProctor!=='undefined'){
@@ -626,6 +648,7 @@ function signOut(){ sb.auth.signOut().then(function(){ State.user=null; hide($('
    BOOTSTRAP
    ==================================================================== */
 function onSignedIn(user){
+  if(RECOVERY_MODE){ showRecoveryUI(); return; }
   State.user=user;
   hide($('authScreen'));
   // upsert a profile so the row exists, then read role.
@@ -5869,27 +5892,62 @@ function runDiagnostics() {
   });
 }
 
+function showRecoveryUI(){
+  RECOVERY_MODE=true;
+  if(document.getElementById('recoverOverlay')){ return; }
+  try{ hide($('appScreen')); }catch(e){}
+  try{ hide($('denyScreen')); }catch(e){}
+  try{ show($('authScreen')); }catch(e){}
+  var o=document.createElement('div'); o.id='recoverOverlay'; o.className='modal-bg';
+  o.innerHTML='<div class="modal" style="max-width:420px;"><h2>Choose a new password</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">You followed a password-reset link. Set a new password to finish.</div>'+
+    '<div id="rcMsg" class="msg"></div>'+
+    '<div class="field"><label>New password</label><input id="rcPw1" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>'+
+    '<div class="field"><label>Confirm new password</label><input id="rcPw2" type="password" autocomplete="new-password" placeholder="Re-enter password"></div>'+
+    '<button class="btn btn-primary" id="rcSave" style="width:100%;">Update password</button></div>';
+  document.body.appendChild(o);
+  function msg(t,ok){ var e=document.getElementById('rcMsg'); if(!e){ return; } e.textContent=t; e.className='msg '+(ok?'ok':'err'); e.style.display='block'; }
+  function submit(){
+    var a=document.getElementById('rcPw1').value, b=document.getElementById('rcPw2').value;
+    if(!a || a.length<6){ msg('Password must be at least 6 characters.',false); return; }
+    if(a!==b){ msg('The two passwords do not match.',false); return; }
+    var btn=document.getElementById('rcSave'); btn.disabled=true;
+    sb.auth.updateUser({ password:a }).then(function(r){
+      btn.disabled=false;
+      if(r.error){ msg(r.error.message,false); return; }
+      msg('Password updated. Signing you in\u2026',true);
+      RECOVERY_MODE=false;
+      try{ history.replaceState(null,'',window.location.pathname); }catch(e){}
+      setTimeout(function(){
+        if(o.parentNode){ o.parentNode.removeChild(o); }
+        sb.auth.getUser().then(function(g){ var usr=(g && g.data)?g.data.user:null; if(usr){ onSignedIn(usr); } });
+      }, 700);
+    }, function(err){ btn.disabled=false; msg(String(err && err.message ? err.message : err),false); });
+  }
+  document.getElementById('rcSave').addEventListener('click', submit);
+  document.getElementById('rcPw2').addEventListener('keydown', function(e){ if(e.key==='Enter'){ submit(); } });
+  try{ document.getElementById('rcPw1').focus(); }catch(e){}
+}
+
 /* ====================================================================
    BOOT
    ==================================================================== */
-sb.auth.getSession().then(function(res){
-  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
-});
-
-// When the user returns from a password-reset email, Supabase fires
-// PASSWORD_RECOVERY. Prompt for a new password and update it.
-sb.auth.onAuthStateChange(function(event, session){
-  if(event==='PASSWORD_RECOVERY'){
-    var np = window.prompt('Enter a new password (at least 6 characters):');
-    if(np && np.length>=6){
-      sb.auth.updateUser({ password: np }).then(function(r){
-        if(r.error){ alert('Could not update password: '+r.error.message); }
-        else { alert('Password updated. You are now signed in.'); }
-      });
-    } else if(np!==null){
-      alert('Password must be at least 6 characters. Click the reset link again to retry.');
-    }
+// If the reset link was expired/invalid, Supabase returns an error in the URL.
+// Show it on the sign-in screen instead of failing silently.
+(function(){
+  var ah=parseAuthHash();
+  if(ah && ah.error){
+    var d=ah.error_desc||ah.error; try{ d=decodeURIComponent(d); }catch(e){}
+    d=String(d).replace(/\+/g,' ');
+    if(/expired|invalid/i.test(d)){ d='Your password-reset link has expired or was already used. Click "Forgot password?" to request a new one.'; }
+    try{ setAuthMsg(d,'err'); }catch(e){}
+    try{ history.replaceState(null,'',window.location.pathname); }catch(e){}
   }
+})();
+
+sb.auth.getSession().then(function(res){
+  if(RECOVERY_MODE){ showRecoveryUI(); return; }
+  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
 });
 try { console.log('%cInternational Trade build: ' + IT_BUILD + ' | tree renderer present: ' + (typeof renderTreeFigure !== 'undefined') + ' | matrix renderer present: ' + (typeof renderMatrixFigure !== 'undefined'), 'color:#7c6df2;font-weight:bold'); } catch(e){}
 </script>
