@@ -1733,7 +1733,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+pct(g.computed)+'</td>'+
       (canGrade?('<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'):('<td>'+(g.override?(esc(String(g.override.pct))+'%'):'\u2014')+'</td>'))+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
-      '<td>'+(canGrade?'<button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> ':'')+'<button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
+      '<td>'+(canGrade?'<button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> ':'')+'<button class="btn btn-ghost btn-sm" data-detail="'+g.sid+'" data-dname="'+esc(g.name||g.email)+'" title="See this student\u2019s score on every quiz, reading, arena, exam and assignment">Grades</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
@@ -5099,6 +5099,120 @@ function renderMyGrades(host, exams, examScore, asgs, subBy, summary){
   }
   html+='</div>';
   host.innerHTML=html;
+}
+
+/* ====================================================================
+   PER-ITEM GRADE BREAKDOWN  (shared by student My Grades + instructor gradebook)
+   Every quiz, reading, arena, exam and assignment shown as its own row so both
+   students and instructors can see each grade at a glance.
+   ==================================================================== */
+// Fetch a normalized breakdown for one student in one course.
+function fetchGradeBreakdown(courseId, studentId, reqN){
+  reqN = reqN || 13;
+  return Promise.all([
+    sb.from('it_chapter_progress').select('chapter,reading_done,quiz_score,quiz_passed,quiz_attempts').eq('student_id',studentId).eq('course_id',courseId),
+    sb.from('it_arena_results').select('arena_slug,score,played_at').eq('student_id',studentId).eq('course_id',courseId),
+    sb.from('it_exams').select('id,kind,title,total_points,attempt_scoring').eq('course_id',courseId).eq('is_published',true).order('created_at',{ascending:true}),
+    sb.from('it_assignments').select('id,title,points').eq('course_id',courseId).eq('is_published',true).order('created_at',{ascending:true}),
+    sb.from('it_submissions').select('assignment_id,score,feedback,submitted_at,graded_at').eq('student_id',studentId)
+  ]).then(function(r){
+    var prog=r[0].data||[], arena=r[1].data||[], exams=r[2].data||[], asgs=r[3].data||[], subs=r[4].data||[];
+    var progByCh={}; prog.forEach(function(p){ progByCh[p.chapter]=p; });
+    // quizzes + readings by chapter (all 14 chapters)
+    var quizzes=[], readings=[];
+    CHAPTERS.forEach(function(ch){
+      var p=progByCh[ch.n]||{};
+      var qs=(p.quiz_score!==null&&p.quiz_score!==undefined)?Number(p.quiz_score):null;
+      quizzes.push({ chapter:ch.n, title:ch.title, score:qs, passed:!!p.quiz_passed, attempts:(p.quiz_attempts||0) });
+      readings.push({ chapter:ch.n, title:ch.title, done:!!p.reading_done });
+    });
+    // arenas: performance = avg of first ARENA_MAX_ATTEMPTS scores (matches the grade); plus plays
+    var byArena={}; arena.forEach(function(a){ if(!a||!a.arena_slug){ return; } if(!byArena[a.arena_slug]){ byArena[a.arena_slug]=[]; } byArena[a.arena_slug].push(a); });
+    var arenas=ARENA_SLUGS.map(function(slug){
+      var rows=(byArena[slug]||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
+      var perf=null;
+      if(rows.length){ var take=Math.min(ARENA_MAX_ATTEMPTS,rows.length),sum=0; for(var i=0;i<take;i++){ var sc=rows[i].score; sum+=(sc!==null&&sc!==undefined)?Number(sc):0; } perf=sum/take; }
+      return { slug:slug, title:(ARENA_TITLE[slug]||slug), perf:perf, plays:rows.length };
+    });
+    // exams: earned points via each exam's scoring policy
+    var examIds=exams.map(function(e){ return e.id; });
+    var examsP = examIds.length ? sb.from('it_attempts').select('exam_id,item_id,points_earned,created_at').eq('student_id',studentId).in('exam_id',examIds).not('graded_at','is',null) : Promise.resolve({data:[]});
+    return examsP.then(function(at){
+      var attempts=(at.data||[]).slice().sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); });
+      var grp={}; attempts.forEach(function(a){ if(!grp[a.exam_id]){ grp[a.exam_id]={}; } if(!grp[a.exam_id][a.item_id]){ grp[a.exam_id][a.item_id]=[]; } grp[a.exam_id][a.item_id].push(a.points_earned?Number(a.points_earned):0); });
+      var examRows=exams.map(function(e){
+        var taken=!!grp[e.id], earned=null;
+        if(taken){ var policy=e.attempt_scoring||'highest', tot=0; Object.keys(grp[e.id]).forEach(function(iid){ var arr=grp[e.id][iid],v=0; if(policy==='latest'){ v=arr[arr.length-1]; } else if(policy==='average'){ var sm=0; for(var k=0;k<arr.length;k++){ sm+=arr[k]; } v=sm/arr.length; } else { v=Math.max.apply(null,arr); } tot+=v; }); earned=tot; }
+        return { title:(e.title||(e.kind==='final'?'Final exam':(e.kind==='midterm'?'Midterm':'Exam'))), earned:earned, total:e.total_points||0, taken:taken };
+      });
+      var subBy={}; subs.forEach(function(x){ subBy[x.assignment_id]=x; });
+      var asgRows=asgs.map(function(a){
+        var sub=subBy[a.id]; var graded=sub&&sub.score!==null&&sub.score!==undefined;
+        return { title:a.title, score:graded?Number(sub.score):null, points:a.points||0,
+                 status:(!sub?'Not submitted':(graded?'Graded':'Submitted · awaiting grade')),
+                 feedback:(graded&&sub.feedback)?sub.feedback:'' };
+      });
+      return { quizzes:quizzes, readings:readings, arenas:arenas, exams:examRows, assignments:asgRows, reqArenas:reqN };
+    });
+  });
+}
+// Render the normalized breakdown as five compact cards.
+function gradeBreakdownHTML(d, opts){
+  opts=opts||{};
+  function pctCell(x){ return (x===null||x===undefined)?'<span class="tag dim">—</span>':('<b>'+Math.round(x*100)+'%</b>'); }
+  var h='';
+  // Reading
+  var readDone=d.readings.filter(function(x){ return x.done; }).length;
+  h+='<div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h3 style="font-size:15px;margin:0;">Reading</h3><span class="tag dim">'+readDone+' / '+d.readings.length+' chapters</span></div>';
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Chapter</th><th scope="col">Status</th></tr></thead><tbody>';
+  d.readings.forEach(function(x){ h+='<tr><th scope="row" style="font-weight:500;">Ch '+x.chapter+' · '+esc(x.title)+'</th><td>'+(x.done?'<span class="tag green">read</span>':'<span class="tag dim">not yet</span>')+'</td></tr>'; });
+  h+='</tbody></table></div></div>';
+  // Quizzes
+  h+='<div class="card" style="margin-bottom:14px;"><h3 style="font-size:15px;margin:0 0 8px;">Quizzes</h3>';
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Chapter</th><th scope="col">Score</th><th scope="col">Result</th><th scope="col">Attempts</th></tr></thead><tbody>';
+  d.quizzes.forEach(function(x){
+    var res = (x.score===null)?'<span class="tag dim">not taken</span>':(x.passed?'<span class="tag green">passed</span>':'<span class="tag amber">keep trying</span>');
+    h+='<tr><th scope="row" style="font-weight:500;">Ch '+x.chapter+' · '+esc(x.title)+'</th><td>'+pctCell(x.score)+'</td><td>'+res+'</td><td>'+(x.attempts||0)+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  // Arenas
+  h+='<div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h3 style="font-size:15px;margin:0;">Arenas</h3><span class="tag dim">best '+d.reqArenas+' count</span></div>';
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Arena</th><th scope="col">Score</th><th scope="col">Plays</th></tr></thead><tbody>';
+  d.arenas.forEach(function(x){ h+='<tr><th scope="row" style="font-weight:500;">'+esc(x.title)+'</th><td>'+pctCell(x.perf)+'</td><td>'+(x.plays?x.plays:'<span class="tag dim">—</span>')+'</td></tr>'; });
+  h+='</tbody></table></div><div style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;">Score is the average of your first '+ARENA_MAX_ATTEMPTS+' attempts (how the grade counts it).</div></div>';
+  // Exams
+  h+='<div class="card" style="margin-bottom:14px;"><h3 style="font-size:15px;margin:0 0 8px;">Exams</h3>';
+  if(d.exams.length===0){ h+='<div style="font-size:13px;color:var(--text-subtle);">No exams yet.</div>'; }
+  else { h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Exam</th><th scope="col">Score</th><th scope="col">Status</th></tr></thead><tbody>';
+    d.exams.forEach(function(x){ h+='<tr><th scope="row" style="font-weight:500;">'+esc(x.title)+'</th><td>'+(x.taken?(fmtPts(x.earned)+' / '+x.total+(x.total?(' · '+Math.round((x.earned/x.total)*100)+'%'):'')):'<span class="tag dim">—</span>')+'</td><td>'+(x.taken?'<span class="tag green">graded</span>':'<span class="tag dim">not taken</span>')+'</td></tr>'; });
+    h+='</tbody></table></div>'; }
+  h+='</div>';
+  // Assignments
+  h+='<div class="card"><h3 style="font-size:15px;margin:0 0 8px;">Assignments</h3>';
+  if(d.assignments.length===0){ h+='<div style="font-size:13px;color:var(--text-subtle);">No assignments yet.</div>'; }
+  else { h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Assignment</th><th scope="col">Score</th><th scope="col">Status</th>'+(opts.showFeedback?'<th scope="col">Feedback</th>':'')+'</tr></thead><tbody>';
+    d.assignments.forEach(function(x){
+      var sc=(x.score===null)?'<span class="tag dim">—</span>':(fmtPts(x.score)+' / '+x.points);
+      h+='<tr><th scope="row" style="font-weight:500;">'+esc(x.title)+'</th><td>'+sc+'</td><td>'+esc(x.status)+'</td>'+(opts.showFeedback?('<td style="max-width:280px;white-space:pre-wrap;">'+(x.feedback?esc(x.feedback):'—')+'</td>'):'')+'</tr>';
+    });
+    h+='</tbody></table></div>'; }
+  h+='</div>';
+  return h;
+}
+// Instructor: per-student breakdown modal (opened from the gradebook).
+function openStudentDetail(courseId, studentId, name){
+  if(!courseId||!studentId){ return; }
+  var c=findCourse(courseId); var reqN=(c&&c.required_arenas)?Number(c.required_arenas):13;
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:760px;"><h3 style="margin-bottom:4px;">Grades — '+esc(name||'student')+'</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">This student’s score on every quiz, reading, arena, exam and assignment.</p>'+
+    '<div id="sdBody" style="max-height:64vh;overflow:auto;">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="sdClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('sdClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+  fetchGradeBreakdown(courseId, studentId, reqN).then(function(d){
+    var b=$('sdBody'); if(b){ b.innerHTML=gradeBreakdownHTML(d, {showFeedback:true}); }
+  }, function(){ var b=$('sdBody'); if(b){ b.innerHTML='<div class="card empty">Could not load this student’s grades.</div>'; } });
 }
 
 function loadMyExams() {
