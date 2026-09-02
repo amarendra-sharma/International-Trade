@@ -1743,6 +1743,9 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-detail]'), function(b){
+    b.addEventListener('click', function(){ openStudentDetail(c.id, b.getAttribute('data-detail'), b.getAttribute('data-dname')); });
+  });
   Array.prototype.forEach.call(host.querySelectorAll('[data-saveovr]'), function(b){ b.addEventListener('click', function(){
     var sid=b.getAttribute('data-saveovr');
     var v=$('ovr-'+sid).value;
@@ -5001,45 +5004,13 @@ function computeWeightedGrade(callback){
 
 function loadMyGradesDetail(host, summary){
   var uid=State.user.id;
-  sb.from('it_enrollments').select('course_id').eq('student_id',uid).eq('status','active').then(function(en){
-    var courseIds=(en.data?en.data:[]).map(function(x){ return x.course_id; });
-    if(courseIds.length===0){ host.innerHTML=(summary?gradeSummaryCard(summary):'')+'<div class="card empty">No graded work yet. When you take exams or submit assignments, your grades appear here.</div>'; return; }
-    Promise.all([
-      sb.from('it_exams').select('id,course_id,kind,title,total_points,attempt_scoring').in('course_id',courseIds).eq('is_published',true),
-      sb.from('it_assignments').select('id,course_id,title,points').in('course_id',courseIds).eq('is_published',true),
-      sb.from('it_submissions').select('assignment_id,score,feedback,submitted_at,graded_at').eq('student_id',uid)
-    ]).then(function(res){
-      var exams=res[0].data?res[0].data:[];
-      var asgs=res[1].data?res[1].data:[];
-      var subs=res[2].data?res[2].data:[];
-      var subBy={}; subs.forEach(function(s){ subBy[s.assignment_id]=s; });
-      var examIds=exams.map(function(e){ return e.id; });
-      var attemptsP = examIds.length ? sb.from('it_attempts').select('exam_id,item_id,points_earned,created_at,graded_at').eq('student_id',uid).in('exam_id',examIds).not('graded_at','is',null) : Promise.resolve({data:[]});
-      attemptsP.then(function(at){
-        var attempts=at.data?at.data:[];
-        attempts.sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); });
-        var grp={};
-        attempts.forEach(function(a){
-          if(!grp[a.exam_id]){ grp[a.exam_id]={}; }
-          if(!grp[a.exam_id][a.item_id]){ grp[a.exam_id][a.item_id]=[]; }
-          grp[a.exam_id][a.item_id].push(a.points_earned?Number(a.points_earned):0);
-        });
-        var examScore={};
-        exams.forEach(function(e){
-          if(!grp[e.id]){ return; }
-          var policy=e.attempt_scoring||'highest'; var total=0;
-          Object.keys(grp[e.id]).forEach(function(iid){
-            var arr=grp[e.id][iid]; var v=0;
-            if(policy==='latest'){ v=arr[arr.length-1]; }
-            else if(policy==='average'){ var s=0; for(var k=0;k<arr.length;k++){s+=arr[k];} v=s/arr.length; }
-            else { v=Math.max.apply(null,arr); }
-            total+=v;
-          });
-          examScore[e.id]=total;
-        });
-        renderMyGrades(host, exams, examScore, asgs, subBy, summary);
-      });
-    });
+  var courseId = (summary && summary.course) ? summary.course.id : (State.payCourseId||State.selfCourseId);
+  if(!courseId){ host.innerHTML=(summary?gradeSummaryCard(summary):'')+'<div class="card empty">No graded work yet. When you read a chapter, take a quiz or exam, play an arena, or submit an assignment, your grades appear here.</div>'; return; }
+  var reqN=(summary && summary.course && summary.course.required_arenas)?Number(summary.course.required_arenas):13;
+  fetchGradeBreakdown(courseId, uid, reqN).then(function(d){
+    host.innerHTML = (summary?gradeSummaryCard(summary):'') + gradeBreakdownHTML(d, {showFeedback:true});
+  }, function(){
+    host.innerHTML = (summary?gradeSummaryCard(summary):'') + '<div class="card empty">Could not load your detailed grades right now. Please refresh.</div>';
   });
 }
 
