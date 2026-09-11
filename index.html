@@ -3509,7 +3509,7 @@ function openOverridesModal(studentId, email){
   if(!courseId){ alert('Select a course first.'); return; }
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal" style="max-width:600px;"><h2 style="margin-bottom:4px;">Extensions &amp; attempts</h2>'+
-    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">'+esc(email||'student')+' &middot; grant extra attempts or a new deadline for one exam, graded quiz, or assignment &mdash; e.g. after a missed deadline or a glitch that auto-submitted their work.</div>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">'+esc(email||'student')+' &middot; grant extra attempts or a new deadline for one exam, graded quiz, chapter reading, arena, or assignment &mdash; e.g. after a missed deadline or a glitch that auto-submitted their work.</div>'+
     '<div id="ovMsg" class="msg"></div>'+
     '<div class="field"><label>Applies to</label><select id="ovScope"><option value="exam">Exam</option><option value="quiz">Graded quiz (by chapter)</option><option value="reading">Chapter reading</option><option value="arena">Arena</option><option value="assignment">Assignment</option></select></div>'+
     '<div class="field" id="ovTargetWrap"><label>Which one</label><select id="ovTarget"></select></div>'+
@@ -3562,7 +3562,7 @@ function openOverridesModal(studentId, email){
       var exMap={}; exams.forEach(function(x){ exMap[x.id]=x.title; });
       var asMap={}; assignments.forEach(function(x){ asMap[x.id]=x.title; });
       host.innerHTML=rows.map(function(o){
-        var what = o.scope==='exam' ? ('Exam: '+esc(exMap[o.exam_id]||'(removed)')) : (o.scope==='assignment' ? ('Assignment: '+esc(asMap[o.assignment_id]||'(removed)')) : ('Graded quiz — chapter '+o.quiz_chapter));
+        var what = o.scope==='exam' ? ('Exam: '+esc(exMap[o.exam_id]||'(removed)')) : o.scope==='assignment' ? ('Assignment: '+esc(asMap[o.assignment_id]||'(removed)')) : o.scope==='reading' ? ('Chapter reading — chapter '+o.quiz_chapter) : o.scope==='arena' ? ('Arena: '+esc(ARENA_TITLE[o.arena_slug]||o.arena_slug||'(removed)')) : ('Graded quiz — chapter '+o.quiz_chapter);
         var bits=[];
         if(o.extra_attempts){ bits.push('+'+o.extra_attempts+' attempt'+(Number(o.extra_attempts)===1?'':'s')); }
         if(o.new_deadline){ bits.push('due '+new Date(o.new_deadline).toLocaleString()); }
@@ -3937,7 +3937,7 @@ function renderArenas() {
       div.innerHTML =
         '<div class="c-eyebrow">Arena' + (FREE_ARENAS[slug] ? ' · Free' : '') + '</div>' +
         '<div class="c-title">' + esc(ARENA_TITLE[slug]) + '</div>' +
-        '<div class="c-meta mono">' + esc(slug) + '</div>' + pill;
+        '<div class="c-meta" style="font-size:11.5px;color:var(--text-subtle);line-height:1.4;">' + arenaReadHint(slug) + '</div>' + '<div style="font-size:11px;color:var(--text-muted);margin:3px 0 2px;line-height:1.4;">Goal: ' + esc(ARENA_GOAL[slug]||'') + '</div>' + pill;
       if (file && !locked && !capped && !notOpen && !closed) {
         div.addEventListener('click', function() { window.open(file, '_blank'); });
       } else if (file && locked) {
@@ -5134,6 +5134,59 @@ function fetchGradeBreakdown(courseId, studentId, reqN){
 }
 // Render the normalized breakdown as five compact cards.
 // ---- Arena score breakdown: turn stored per-play details into a readable panel ----
+var ARENA_SCORING_NOTE = {
+  'ricardian': 'Each round is scored by how close your specialization-and-trade choice came to the maximum gains from trade available (100% = the best possible), and your play score is the average across rounds. Do well by specializing in your comparative-advantage good (the one with the lowest opportunity cost) and trading at terms between the two countries’ autarky prices.',
+  'specific-factors': 'Your score is your factor’s income, not your win count. Each round a trade-policy vote is decided and the winning policy raises or lowers the income of the factor you represent; your score is where your final income lands between the worst outcome possible (0%) and the best (100%). You can win every vote yet still score low if you backed policies that hurt your factor — so back, and win, the policy that helps you.',
+  'heckscher-ohlin': 'Each round is scored by the value your production and trade choice created versus the best possible choice given the country’s factor endowments (100% = optimal), averaged across rounds. Do well by exporting the good that uses your abundant factor intensively.',
+  'terms-of-trade': 'Your score places the national welfare you achieved between passive play (0%) and expert play (100%) on the very same world. Do well by adjusting policy as world prices move — investing in import-competing sectors in glut years and pressing your advantage when your terms of trade are strong.',
+  'scale-economies': 'Your score is your total outcome as a fraction of the expert benchmark (100% = matching best play). Do well by concentrating production to exploit economies of scale and the larger integrated market.',
+  'firm-export': 'Your score places your firm’s total profit between the worst (0%) and best (100%) possible paths. Do well by exporting only when a firm is productive enough to cover the fixed cost of entering a foreign market — and staying home when it is not.',
+  'tariff-lab': 'Each decision is scored against the welfare-maximizing tariff (100% = optimal), averaged across rounds. Do well by setting tariffs near the level that balances terms-of-trade gains against deadweight loss, and recognizing when free trade is best.',
+  'lobby': 'Your score places the political “bank” you built between the worst (0%) and the expert benchmark (100%). Do well by spending lobbying effort where protection is politically cheap — concentrated benefits that outweigh diffuse consumer costs.',
+  'trade-war': 'Your score is your payoff as a fraction of the expert benchmark across the repeated game (100% = best play). Do well by choosing cooperate or defect strategically — sustaining cooperation when you can and retaliating to deter, as in a repeated prisoner’s dilemma.',
+  'negotiation': 'Your score places the welfare you reached between the worst (0%) and the expert benchmark (100%). Do well by forming agreements that expand real market access (trade creation) while avoiding deals that mostly divert trade to costlier partners.',
+  'currency': 'Your score places your outcome between the worst (0%) and the best (100%) currency-management path. Do well by reading how exchange-rate moves change competitiveness and timing your decisions accordingly.',
+  'supply-chain': 'Your score places your final profit between the worst (0%) and best (100%) sourcing-and-location plan. Do well by placing each stage where its costs and comparative advantage are lowest, accounting for trade and coordination costs.',
+  'quant-lab': 'Your score is the fraction of question points you earned (100% = all correct). Do well by applying the chapter’s quantitative tools — gravity, wage-and-exchange-rate competitiveness, and welfare calculations — accurately.'
+};
+var ARENA_READING = {
+  'ricardian':[1,2], 'specific-factors':[3], 'heckscher-ohlin':[4], 'terms-of-trade':[5],
+  'scale-economies':[6], 'firm-export':[7], 'tariff-lab':[8], 'lobby':[9], 'trade-war':[10],
+  'negotiation':[11], 'currency':[12], 'supply-chain':[13], 'quant-lab':[14]
+};
+var ARENA_GOAL = {
+  'ricardian':'Specialize by comparative advantage and trade.',
+  'specific-factors':'Back the policy that raises your factor’s income.',
+  'heckscher-ohlin':'Export the good that uses your abundant factor.',
+  'terms-of-trade':'Manage policy as world prices move.',
+  'scale-economies':'Exploit economies of scale in a bigger market.',
+  'firm-export':'Export only when productive enough to cover fixed costs.',
+  'tariff-lab':'Set the welfare-maximizing tariff.',
+  'lobby':'Spend lobbying where protection pays politically.',
+  'trade-war':'Cooperate or retaliate strategically.',
+  'negotiation':'Strike agreements that create, not divert, trade.',
+  'currency':'Time your decisions to exchange-rate moves.',
+  'supply-chain':'Locate each stage by comparative advantage.',
+  'quant-lab':'Apply the quantitative trade tools accurately.'
+};
+function arenaReadHint(slug){
+  var ch=ARENA_READING[slug]; if(!ch||!ch.length){ return ''; }
+  var titles=ch.map(function(nn){ var c=CHAPTERS.filter(function(x){return x.n===nn;})[0]; return c?c.title:('Chapter '+nn); });
+  var label = ch.length>1 ? ('Chapters '+ch[0]+'–'+ch[ch.length-1]) : ('Chapter '+ch[0]);
+  return '📖 Read first: '+label+' — '+esc(titles.join(' / '));
+}
+function arenaColLabel(k){
+  var m={round:'Round',side:'Policy that passed',won:'Your side',dIncome:'Income effect',score:'Score',draws:'Draws',role:'Your role',finalIncome:'Final income',basketM:'Consumption mix',best:'Best',bestSeq:'Best sequence'};
+  return m[k]||k;
+}
+function arenaCellFmt(k,v){
+  if(k==='won'){ return v?'<span class="tag green">won</span>':'<span class="tag dim">lost</span>'; }
+  if(k==='side'){ return v==='free'?'Open / liberalize':(v==='prot'?'Protect / restrict':esc(String(v))); }
+  if(k==='dIncome' && typeof v==='number'){ var p=v*100; return '<span style="color:'+(p>=0?'var(--green)':'var(--rose,#FB7185)')+';">'+(p>=0?'+':'')+p.toFixed(1)+'%</span>'; }
+  if(k==='score' && typeof v==='number'){ return Math.round(v*100)+'%'; }
+  if(k==='role' && typeof v==='string'){ return esc(v.charAt(0).toUpperCase()+v.slice(1)); }
+  return esc(fmtArenaVal(v));
+}
 function fmtArenaVal(v){
   if(v===null||v===undefined){ return '\u2014'; }
   if(typeof v==='number'){ return String(Math.round(v*1000)/1000); }
@@ -5144,6 +5197,8 @@ function fmtArenaVal(v){
 }
 function arenaDetailBody(details){
   if(!details){ return '<div style="font-size:12px;color:var(--text-subtle);">No round-by-round breakdown was recorded for this play.</div>'; }
+  var scalars=Object.keys(details).filter(function(k){ return k!=='version' && (details[k]===null || typeof details[k]!=='object'); });
+  var sline=scalars.length?('<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:5px;">'+scalars.map(function(k){ return '<b>'+esc(arenaColLabel(k))+':</b> '+arenaCellFmt(k,details[k]); }).join(' \u00b7 ')+'</div>'):'';
   if(Array.isArray(details.rounds) && details.rounds.length){
     var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Round</th><th scope="col">Score</th><th scope="col">What happened</th></tr></thead><tbody>';
     details.rounds.forEach(function(r,i){
@@ -5151,17 +5206,24 @@ function arenaDetailBody(details){
       var extra=Object.keys(r).filter(function(k){return k!=='round'&&k!=='score';}).map(function(k){ return esc(k)+': '+esc(fmtArenaVal(r[k])); }).join(' \u00b7 ');
       h+='<tr><th scope="row" style="font-weight:500;">'+(r.round!==undefined?esc(String(r.round)):(i+1))+'</th><td>'+sc+'</td><td style="font-size:11.5px;color:var(--text-muted);">'+extra+'</td></tr>';
     });
-    return h+'</tbody></table></div>';
+    return sline+h+'</tbody></table></div>';
   }
   if(Array.isArray(details.scores) && details.scores.length){
     var h2='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Decision</th><th scope="col">Score</th></tr></thead><tbody>';
     details.scores.forEach(function(x,i){ h2+='<tr><th scope="row" style="font-weight:500;">'+(i+1)+'</th><td>'+(typeof x==='number'?Math.round(x*100)+'%':esc(fmtArenaVal(x)))+'</td></tr>'; });
-    return h2+'</tbody></table></div>';
+    return sline+h2+'</tbody></table></div>';
   }
   if(Array.isArray(details.history) && details.history.length){
-    var h3='<div style="font-size:12px;color:var(--text-muted);">Decision-by-decision record:</div><ol style="margin:4px 0 0 18px;font-size:12px;color:var(--text-muted);">';
-    details.history.slice(0,24).forEach(function(x){ h3+='<li>'+esc(fmtArenaVal(x))+'</li>'; });
-    return h3+'</ol>';
+    var hist=details.history;
+    if(typeof hist[0]==='object' && hist[0]!==null && !Array.isArray(hist[0])){
+      var cols=[]; hist.forEach(function(o){ Object.keys(o).forEach(function(k){ if(cols.indexOf(k)<0){ cols.push(k); } }); });
+      var ht='<div class="tbl-wrap"><table class="tbl"><thead><tr>'+cols.map(function(k){ return '<th scope="col">'+esc(arenaColLabel(k))+'</th>'; }).join('')+'</tr></thead><tbody>';
+      hist.slice(0,50).forEach(function(o){ ht+='<tr>'+cols.map(function(k,ci){ var disp=arenaCellFmt(k,o[k]); return ci===0?('<th scope="row" style="font-weight:500;">'+disp+'</th>'):('<td style="font-size:11.5px;">'+disp+'</td>'); }).join('')+'</tr>'; });
+      return sline+ht+'</tbody></table></div>';
+    }
+    var h3='<ol style="margin:4px 0 0 18px;font-size:12px;color:var(--text-muted);">';
+    hist.slice(0,30).forEach(function(x){ h3+='<li>'+esc(fmtArenaVal(x))+'</li>'; });
+    return sline+h3+'</ol>';
   }
   var keys=Object.keys(details).filter(function(k){ return k!=='version'; });
   if(keys.length){ return '<div style="font-size:12px;color:var(--text-muted);">'+keys.map(function(k){ return '<b>'+esc(k)+':</b> '+esc(fmtArenaVal(details[k])); }).join(' \u00b7 ')+'</div>'; }
@@ -5187,11 +5249,11 @@ function arenaScoringSection(arenas, opts){
   var now=Date.now();
   var h='<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-bright);font-weight:600;margin-bottom:4px;">How each arena score was earned</div>'+
-    '<div style="font-size:11.5px;color:var(--text-subtle);margin-bottom:8px;">Each play scores every round by how close your decisions came to the best available outcome (100% = optimal); your arena grade is the average of your first '+ARENA_MAX_ATTEMPTS+' graded plays.</div>';
+    '<div style="font-size:11.5px;color:var(--text-subtle);margin-bottom:8px;">Each play is scored on a 0\u2013100% scale, where 0% is the worst result your decisions could have produced and 100% is the best; your arena grade is the average of your first '+ARENA_MAX_ATTEMPTS+' graded plays.</div>';
   played.forEach(function(ar){
     var unlocked = instructor || !!(ar.effClose && now > new Date(ar.effClose).getTime());
     if(unlocked){
-      h+='<details style="margin:4px 0;"><summary style="cursor:pointer;font-weight:500;color:var(--text-bright);font-size:13px;">'+esc(ar.title)+' \u2014 how your points were scored</summary>'+arenaScoreDetailHTML(ar.attempts)+'</details>';
+      var rh=arenaReadHint(ar.slug); var note='<div style="font-size:11.5px;color:var(--text-muted);margin:6px 0 4px;">'+(rh?(rh+'<br>'):'')+esc(ARENA_SCORING_NOTE[ar.slug]||'')+'</div>'; h+='<details style="margin:4px 0;"><summary style="cursor:pointer;font-weight:500;color:var(--text-bright);font-size:13px;">'+esc(ar.title)+' \u2014 how your points were scored</summary>'+note+arenaScoreDetailHTML(ar.attempts)+'</details>';
     } else {
       var when = ar.effClose ? (' ('+new Date(ar.effClose).toLocaleDateString()+')') : '';
       h+='<div style="font-size:12px;color:var(--text-subtle);margin:4px 0;">\uD83D\uDD12 '+esc(ar.title)+' \u2014 scoring details unlock after the deadline'+when+'.</div>';
