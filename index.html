@@ -483,7 +483,7 @@ var CHAPTERS = [
 
 var STUDENT_CHAPTERS = [
   {n:1,title:'Why Nations Trade',mins:18,slug:'ricardian'},
-  {n:2,title:'The Ricardian Model',mins:24,slug:'ricardian'},
+  {n:2,title:'The Ricardian Model',mins:34,slug:'ricardian'},
   {n:3,title:'Specific Factors & Income Distribution',mins:28,slug:'specific-factors'},
   {n:4,title:'Heckscher-Ohlin',mins:30,slug:'heckscher-ohlin'},
   {n:5,title:'Standard Trade Model',mins:30,slug:'terms-of-trade'},
@@ -5008,7 +5008,7 @@ function loadMyGradesDetail(host, summary){
   if(!courseId){ host.innerHTML=(summary?gradeSummaryCard(summary):'')+'<div class="card empty">No graded work yet. When you read a chapter, take a quiz or exam, play an arena, or submit an assignment, your grades appear here.</div>'; return; }
   var reqN=(summary && summary.course && summary.course.required_arenas)?Number(summary.course.required_arenas):13;
   fetchGradeBreakdown(courseId, uid, reqN).then(function(d){
-    host.innerHTML = (summary?gradeSummaryCard(summary):'') + gradeBreakdownHTML(d, {showFeedback:true});
+    host.innerHTML = (summary?gradeSummaryCard(summary):'') + gradeBreakdownHTML(d, {showFeedback:true, viewer:'student'});
   }, function(){
     host.innerHTML = (summary?gradeSummaryCard(summary):'') + '<div class="card empty">Could not load your detailed grades right now. Please refresh.</div>';
   });
@@ -5082,12 +5082,16 @@ function fetchGradeBreakdown(courseId, studentId, reqN){
   reqN = reqN || 13;
   return Promise.all([
     sb.from('it_chapter_progress').select('chapter,reading_done,quiz_score,quiz_passed,quiz_attempts').eq('student_id',studentId).eq('course_id',courseId),
-    sb.from('it_arena_results').select('arena_slug,score,played_at').eq('student_id',studentId).eq('course_id',courseId),
+    sb.from('it_arena_results').select('arena_slug,score,played_at,details,outcome').eq('student_id',studentId).eq('course_id',courseId),
     sb.from('it_exams').select('id,kind,title,total_points,attempt_scoring').eq('course_id',courseId).eq('is_published',true).order('created_at',{ascending:true}),
     sb.from('it_assignments').select('id,title,points').eq('course_id',courseId).eq('is_published',true).order('created_at',{ascending:true}),
-    sb.from('it_submissions').select('assignment_id,score,feedback,submitted_at,graded_at').eq('student_id',studentId)
+    sb.from('it_submissions').select('assignment_id,score,feedback,submitted_at,graded_at').eq('student_id',studentId),
+    sb.from('it_arena_deadlines').select('arena_slug,closes_at').eq('course_id',courseId),
+    sb.from('it_overrides').select('arena_slug,new_deadline').eq('student_id',studentId).eq('scope','arena')
   ]).then(function(r){
     var prog=r[0].data||[], arena=r[1].data||[], exams=r[2].data||[], asgs=r[3].data||[], subs=r[4].data||[];
+    var closeBy={}; (r[5]&&r[5].data?r[5].data:[]).forEach(function(x){ closeBy[x.arena_slug]=x.closes_at; });
+    var ovBy={}; (r[6]&&r[6].data?r[6].data:[]).forEach(function(x){ if(x.arena_slug){ ovBy[x.arena_slug]=x.new_deadline; } });
     var progByCh={}; prog.forEach(function(p){ progByCh[p.chapter]=p; });
     // quizzes + readings by chapter (all 14 chapters)
     var quizzes=[], readings=[];
@@ -5103,7 +5107,8 @@ function fetchGradeBreakdown(courseId, studentId, reqN){
       var rows=(byArena[slug]||[]).slice().sort(function(a,b){ return new Date(a.played_at)-new Date(b.played_at); });
       var perf=null;
       if(rows.length){ var take=Math.min(ARENA_MAX_ATTEMPTS,rows.length),sum=0; for(var i=0;i<take;i++){ var sc=rows[i].score; sum+=(sc!==null&&sc!==undefined)?Number(sc):0; } perf=sum/take; }
-      return { slug:slug, title:(ARENA_TITLE[slug]||slug), perf:perf, plays:rows.length };
+      var attempts=rows.map(function(rr,ix){ return { score:rr.score, outcome:rr.outcome, details:rr.details, played_at:rr.played_at, counts:ix<ARENA_MAX_ATTEMPTS }; });
+      return { slug:slug, title:(ARENA_TITLE[slug]||slug), perf:perf, plays:rows.length, attempts:attempts, effClose:(ovBy[slug]||closeBy[slug]||null) };
     });
     // exams: earned points via each exam's scoring policy
     var examIds=exams.map(function(e){ return e.id; });
@@ -5128,6 +5133,72 @@ function fetchGradeBreakdown(courseId, studentId, reqN){
   });
 }
 // Render the normalized breakdown as five compact cards.
+// ---- Arena score breakdown: turn stored per-play details into a readable panel ----
+function fmtArenaVal(v){
+  if(v===null||v===undefined){ return '\u2014'; }
+  if(typeof v==='number'){ return String(Math.round(v*1000)/1000); }
+  if(typeof v==='boolean'){ return v?'yes':'no'; }
+  if(Array.isArray(v)){ return '['+v.length+']'; }
+  if(typeof v==='object'){ try{ return JSON.stringify(v); }catch(e){ return '{\u2026}'; } }
+  return String(v);
+}
+function arenaDetailBody(details){
+  if(!details){ return '<div style="font-size:12px;color:var(--text-subtle);">No round-by-round breakdown was recorded for this play.</div>'; }
+  if(Array.isArray(details.rounds) && details.rounds.length){
+    var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Round</th><th scope="col">Score</th><th scope="col">What happened</th></tr></thead><tbody>';
+    details.rounds.forEach(function(r,i){
+      var sc=(r.score!==undefined&&r.score!==null)?(Math.round(Number(r.score)*100)+'%'):'\u2014';
+      var extra=Object.keys(r).filter(function(k){return k!=='round'&&k!=='score';}).map(function(k){ return esc(k)+': '+esc(fmtArenaVal(r[k])); }).join(' \u00b7 ');
+      h+='<tr><th scope="row" style="font-weight:500;">'+(r.round!==undefined?esc(String(r.round)):(i+1))+'</th><td>'+sc+'</td><td style="font-size:11.5px;color:var(--text-muted);">'+extra+'</td></tr>';
+    });
+    return h+'</tbody></table></div>';
+  }
+  if(Array.isArray(details.scores) && details.scores.length){
+    var h2='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Decision</th><th scope="col">Score</th></tr></thead><tbody>';
+    details.scores.forEach(function(x,i){ h2+='<tr><th scope="row" style="font-weight:500;">'+(i+1)+'</th><td>'+(typeof x==='number'?Math.round(x*100)+'%':esc(fmtArenaVal(x)))+'</td></tr>'; });
+    return h2+'</tbody></table></div>';
+  }
+  if(Array.isArray(details.history) && details.history.length){
+    var h3='<div style="font-size:12px;color:var(--text-muted);">Decision-by-decision record:</div><ol style="margin:4px 0 0 18px;font-size:12px;color:var(--text-muted);">';
+    details.history.slice(0,24).forEach(function(x){ h3+='<li>'+esc(fmtArenaVal(x))+'</li>'; });
+    return h3+'</ol>';
+  }
+  var keys=Object.keys(details).filter(function(k){ return k!=='version'; });
+  if(keys.length){ return '<div style="font-size:12px;color:var(--text-muted);">'+keys.map(function(k){ return '<b>'+esc(k)+':</b> '+esc(fmtArenaVal(details[k])); }).join(' \u00b7 ')+'</div>'; }
+  return '<div style="font-size:12px;color:var(--text-subtle);">No further breakdown recorded.</div>';
+}
+function arenaScoreDetailHTML(attempts){
+  if(!attempts || !attempts.length){ return '<div style="font-size:12px;color:var(--text-subtle);padding:6px 0;">No recorded plays.</div>'; }
+  var h='';
+  attempts.forEach(function(a){
+    var when=a.played_at?new Date(a.played_at).toLocaleString():'';
+    var pct=(a.score!==null&&a.score!==undefined)?Math.round(Number(a.score)*100)+'%':'\u2014';
+    h+='<div style="margin:6px 0;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);">'+
+      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;"><b style="color:var(--text-bright);">Overall '+pct+'</b>'+(a.outcome?(' \u00b7 '+esc(a.outcome)):'')+' \u00b7 '+esc(when)+' '+(a.counts?'<span class="tag green">counts toward grade</span>':'<span class="tag dim">practice</span>')+'</div>'+
+      arenaDetailBody(a.details)+'</div>';
+  });
+  return h;
+}
+function arenaScoringSection(arenas, opts){
+  opts=opts||{};
+  var instructor = opts.viewer==='instructor';
+  var played=(arenas||[]).filter(function(a){ return a.plays>0; });
+  if(!played.length){ return ''; }
+  var now=Date.now();
+  var h='<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">'+
+    '<div style="font-size:12.5px;color:var(--text-bright);font-weight:600;margin-bottom:4px;">How each arena score was earned</div>'+
+    '<div style="font-size:11.5px;color:var(--text-subtle);margin-bottom:8px;">Each play scores every round by how close your decisions came to the best available outcome (100% = optimal); your arena grade is the average of your first '+ARENA_MAX_ATTEMPTS+' graded plays.</div>';
+  played.forEach(function(ar){
+    var unlocked = instructor || !!(ar.effClose && now > new Date(ar.effClose).getTime());
+    if(unlocked){
+      h+='<details style="margin:4px 0;"><summary style="cursor:pointer;font-weight:500;color:var(--text-bright);font-size:13px;">'+esc(ar.title)+' \u2014 how your points were scored</summary>'+arenaScoreDetailHTML(ar.attempts)+'</details>';
+    } else {
+      var when = ar.effClose ? (' ('+new Date(ar.effClose).toLocaleDateString()+')') : '';
+      h+='<div style="font-size:12px;color:var(--text-subtle);margin:4px 0;">\uD83D\uDD12 '+esc(ar.title)+' \u2014 scoring details unlock after the deadline'+when+'.</div>';
+    }
+  });
+  return h+'</div>';
+}
 function gradeBreakdownHTML(d, opts){
   opts=opts||{};
   function pctCell(x){ return (x===null||x===undefined)?'<span class="tag dim">—</span>':('<b>'+Math.round(x*100)+'%</b>'); }
@@ -5150,7 +5221,9 @@ function gradeBreakdownHTML(d, opts){
   h+='<div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h3 style="font-size:15px;margin:0;">Arenas</h3><span class="tag dim">best '+d.reqArenas+' count</span></div>';
   h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Arena</th><th scope="col">Score</th><th scope="col">Plays</th></tr></thead><tbody>';
   d.arenas.forEach(function(x){ h+='<tr><th scope="row" style="font-weight:500;">'+esc(x.title)+'</th><td>'+pctCell(x.perf)+'</td><td>'+(x.plays?x.plays:'<span class="tag dim">—</span>')+'</td></tr>'; });
-  h+='</tbody></table></div><div style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;">Score is the average of your first '+ARENA_MAX_ATTEMPTS+' attempts (how the grade counts it).</div></div>';
+  h+='</tbody></table></div><div style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;">Score is the average of your first '+ARENA_MAX_ATTEMPTS+' attempts (how the grade counts it).</div>';
+  h+=arenaScoringSection(d.arenas, opts);
+  h+='</div>';
   // Exams
   h+='<div class="card" style="margin-bottom:14px;"><h3 style="font-size:15px;margin:0 0 8px;">Exams</h3>';
   if(d.exams.length===0){ h+='<div style="font-size:13px;color:var(--text-subtle);">No exams yet.</div>'; }
@@ -5182,7 +5255,7 @@ function openStudentDetail(courseId, studentId, name){
   document.body.appendChild(ov);
   $('sdClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
   fetchGradeBreakdown(courseId, studentId, reqN).then(function(d){
-    var b=$('sdBody'); if(b){ b.innerHTML=gradeBreakdownHTML(d, {showFeedback:true}); }
+    var b=$('sdBody'); if(b){ b.innerHTML=gradeBreakdownHTML(d, {showFeedback:true, viewer:'instructor'}); }
   }, function(){ var b=$('sdBody'); if(b){ b.innerHTML='<div class="card empty">Could not load this student’s grades.</div>'; } });
 }
 
