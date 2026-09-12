@@ -1614,6 +1614,88 @@ function openRegradeNumeric(courseId, gradebookHost){
   });
 }
 
+// ---- Paper / offline exams: define exams (midterm/final bucket) and enter %s ----
+function openOfflineExams(course){
+  var courseId=course.id;
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:820px;"><h2 style="margin-bottom:4px;">Paper / offline exams</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Record exams you gave in person. Tag each as a <b>Midterm</b> or <b>Final</b> exam and enter each student&rsquo;s percent. The gradebook averages all Midterm exams into your Midterm component and all Final exams into your Final component, at your existing weights.</div>'+
+    '<div id="oeMsg" class="msg"></div>'+
+    '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">'+
+      '<div class="field" style="margin:0;flex:1;min-width:160px;"><label>New paper exam</label><input id="oeName" placeholder="e.g. Midterm 1"></div>'+
+      '<div class="field" style="margin:0;"><label>Counts as</label><select id="oeBucket"><option value="midterm">Midterm</option><option value="final">Final</option></select></div>'+
+      '<button class="btn btn-primary btn-sm" id="oeAdd">Add exam</button>'+
+    '</div>'+
+    '<div id="oeGrid">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;margin-top:14px;"><button class="btn btn-ghost" id="oeClose">Close</button><button class="btn btn-primary" id="oeSave">Save scores</button></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; renderGradebook($('viewHost')); }
+  function msg(t,ok){ var e=$('oeMsg'); e.textContent=t; e.className='msg '+(ok?'ok':'err'); e.style.display='block'; }
+  $('oeClose').addEventListener('click', close);
+  var exams=[], students=[], scoreBy={};
+  function load(){
+    Promise.all([
+      sb.from('it_offline_exams').select('id,name,bucket,position').eq('course_id',courseId).order('position',{ascending:true}).order('created_at',{ascending:true}),
+      sb.from('it_gradebook_v').select('student_id,email,full_name').eq('course_id',courseId)
+    ]).then(function(r){
+      if(r[0].error){ $('oeGrid').innerHTML='<div class="msg err" style="display:block;">The paper-exam tables are not installed yet. Run <b>57_offline_exams.sql</b> in Supabase, then reopen.</div>'; var sv=$('oeSave'); if(sv){ sv.disabled=true; } var ad=$('oeAdd'); if(ad){ ad.disabled=true; } return; }
+      exams=r[0].data||[]; students=(r[1].data||[]).slice().sort(function(a,b){ return (a.full_name||a.email||'').localeCompare(b.full_name||b.email||''); });
+      var ids=exams.map(function(e){ return e.id; });
+      var sp = ids.length ? sb.from('it_offline_scores').select('offline_exam_id,student_id,pct').in('offline_exam_id',ids) : Promise.resolve({data:[]});
+      sp.then(function(sr){ scoreBy={}; (sr.data||[]).forEach(function(x){ scoreBy[x.offline_exam_id+'|'+x.student_id]=x.pct; }); paint(); });
+    });
+  }
+  function paint(){
+    if(exams.length===0){ $('oeGrid').innerHTML='<div class="card empty">No paper exams yet. Add one above (e.g. &ldquo;Midterm 1&rdquo;).</div>'; return; }
+    var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th>';
+    exams.forEach(function(e){ h+='<th scope="col">'+esc(e.name)+'<div style="font-weight:400;font-size:10.5px;color:var(--text-subtle);text-transform:none;letter-spacing:0;">'+(e.bucket==='final'?'Final':'Midterm')+' · <span class="oe-del" data-del="'+e.id+'" style="cursor:pointer;color:var(--rose,#e5626b);">remove</span></div></th>'; });
+    h+='</tr></thead><tbody>';
+    students.forEach(function(st){
+      h+='<tr><th scope="row" style="font-weight:500;">'+esc(st.full_name||st.email)+'</th>';
+      exams.forEach(function(e){ var k=e.id+'|'+st.student_id; var v=(scoreBy[k]!==undefined&&scoreBy[k]!==null)?scoreBy[k]:''; h+='<td><input type="number" min="0" max="100" step="0.1" data-cell="'+k+'" value="'+v+'" style="width:62px;" placeholder="%"></td>'; });
+      h+='</tr>';
+    });
+    h+='</tbody></table></div>';
+    if(students.length===0){ h='<div class="card empty">No enrolled students yet.</div>'; }
+    $('oeGrid').innerHTML=h;
+    Array.prototype.forEach.call($('oeGrid').querySelectorAll('[data-del]'), function(b){ b.addEventListener('click', function(){
+      if(!confirm('Remove this paper exam and all its scores?')){ return; }
+      sb.from('it_offline_exams').delete().eq('id',b.getAttribute('data-del')).then(function(rr){ if(rr.error){ msg(rr.error.message,false); } else { load(); } });
+    }); });
+  }
+  $('oeAdd').addEventListener('click', function(){
+    var name=($('oeName').value||'').trim(); if(!name){ msg('Enter an exam name.',false); return; }
+    $('oeAdd').disabled=true;
+    sb.from('it_offline_exams').insert({ course_id:courseId, name:name, bucket:$('oeBucket').value, position:exams.length }).then(function(rr){
+      $('oeAdd').disabled=false;
+      if(rr.error){ msg(rr.error.message,false); return; }
+      $('oeName').value=''; load();
+    });
+  });
+  $('oeSave').addEventListener('click', function(){
+    var cells=$('oeGrid').querySelectorAll('[data-cell]');
+    var ups=[], dels=[];
+    Array.prototype.forEach.call(cells, function(inp){
+      var parts=inp.getAttribute('data-cell').split('|'); var eid=parts[0], sid=parts[1];
+      var raw=inp.value.trim();
+      if(raw===''){ if(scoreBy[eid+'|'+sid]!==undefined){ dels.push({eid:eid,sid:sid}); } return; }
+      var v=parseFloat(raw); if(isNaN(v)||v<0||v>100){ return; }
+      ups.push({ offline_exam_id:eid, student_id:sid, pct:v, updated_by:State.user.id, updated_at:new Date().toISOString() });
+    });
+    $('oeSave').disabled=true;
+    var work=[];
+    if(ups.length){ work.push(sb.from('it_offline_scores').upsert(ups,{onConflict:'offline_exam_id,student_id'})); }
+    dels.forEach(function(d){ work.push(sb.from('it_offline_scores').delete().eq('offline_exam_id',d.eid).eq('student_id',d.sid)); });
+    Promise.all(work).then(function(res){
+      $('oeSave').disabled=false;
+      var err=res.filter(function(x){ return x&&x.error; })[0];
+      if(err){ msg(err.error.message,false); return; }
+      msg('Saved '+ups.length+' score'+(ups.length===1?'':'s')+'.',true); load();
+    });
+  });
+  load();
+}
+
 function renderGradebook(host){
   if(!needCourse(host)){ return; }
   host.innerHTML=loadingCard();
@@ -1668,12 +1750,17 @@ function renderGradebook(host){
         sb.from('it_assignments').select('id,points').eq('course_id',State.teachCourseId).eq('is_published',true),
         sb.from('it_submissions').select('assignment_id,student_id,score').eq('course_id',State.teachCourseId),
         sb.from('it_grade_overrides').select('student_id,override_pct,note').eq('course_id',State.teachCourseId),
-        sb.from('it_arena_results').select('student_id,arena_slug,score,played_at').eq('course_id',State.teachCourseId)
+        sb.from('it_arena_results').select('student_id,arena_slug,score,played_at').eq('course_id',State.teachCourseId),
+        sb.from('it_offline_exams').select('id,bucket').eq('course_id',State.teachCourseId),
+        sb.from('it_offline_scores').select('offline_exam_id,student_id,pct')
       ]).then(function(ar){
         var aRows=ar[0].data?ar[0].data:[];
         var subs=ar[1].data?ar[1].data:[];
         var ovr=ar[2].data?ar[2].data:[];
         var arenaRows=ar[3].data?ar[3].data:[];
+        var offBucket={}; (ar[4]&&ar[4].data?ar[4].data:[]).forEach(function(e){ offBucket[e.id]=e.bucket; });
+        var offAgg={}; (ar[5]&&ar[5].data?ar[5].data:[]).forEach(function(sc){ var b=offBucket[sc.offline_exam_id]; if(!b){ return; } if(!offAgg[sc.student_id]){ offAgg[sc.student_id]={midterm:[],final:[]}; } offAgg[sc.student_id][b].push(Number(sc.pct)); });
+        var offlineBy={}; Object.keys(offAgg).forEach(function(sid){ var o=offAgg[sid]; function avg(a){ return a.length? a.reduce(function(x,y){return x+y;},0)/a.length : null; } offlineBy[sid]={ midterm:avg(o.midterm), final:avg(o.final) }; });
         // group arena results per student, then compute performance-based score each
         var arenaByStudent={};
         arenaRows.forEach(function(r){ if(!arenaByStudent[r.student_id]){ arenaByStudent[r.student_id]=[]; } arenaByStudent[r.student_id].push(r); });
@@ -1692,21 +1779,23 @@ function renderGradebook(host){
         var asgScore={};
         Object.keys(earn).forEach(function(sid){ asgScore[sid]= poss[sid]>0 ? (earn[sid]/poss[sid]) : null; });
         var overrideOf={}; ovr.forEach(function(o){ overrideOf[o.student_id]={ pct:o.override_pct, note:o.note }; });
-        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy);
+        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy,offlineBy);
       });
     });
   });
 }
-function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy){
-  asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {}; quizSumBy = quizSumBy || {};
+function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy,offlineBy){
+  asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {}; quizSumBy = quizSumBy || {}; offlineBy = offlineBy || {};
   var canGrade=canGradeCourse(c.id);
   if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
   var computed=rows.map(function(r){
     var reading=r.chapters_read/14;
     var quizzes=(quizSumBy[r.student_id]!==undefined)?(quizSumBy[r.student_id]/14):(r.quizzes_passed/14);
     var arenas=(arenaScoreOf[r.student_id]!==undefined)?arenaScoreOf[r.student_id]:0;
-    var midScore=(midterm&&midterm.total_points)?((examScore[r.student_id]&&examScore[r.student_id].midterm?examScore[r.student_id].midterm:0)/midterm.total_points):null;
-    var finScore=(fin&&fin.total_points)?((examScore[r.student_id]&&examScore[r.student_id].final?examScore[r.student_id].final:0)/fin.total_points):null;
+    var offm=(offlineBy[r.student_id]&&offlineBy[r.student_id].midterm!=null)?offlineBy[r.student_id].midterm/100:null;
+    var offf=(offlineBy[r.student_id]&&offlineBy[r.student_id].final!=null)?offlineBy[r.student_id].final/100:null;
+    var midScore= offm!=null ? offm : ((midterm&&midterm.total_points)?((examScore[r.student_id]&&examScore[r.student_id].midterm?examScore[r.student_id].midterm:0)/midterm.total_points):null);
+    var finScore= offf!=null ? offf : ((fin&&fin.total_points)?((examScore[r.student_id]&&examScore[r.student_id].final?examScore[r.student_id].final:0)/fin.total_points):null);
     // renormalize weights over available components
     var comps=[['reading',reading,weights.reading],['quizzes',quizzes,weights.quizzes],['arenas',arenas,weights.arenas]];
     if(midScore!==null){ comps.push(['midterm',midScore,weights.midterm]); }
@@ -1718,18 +1807,18 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
     var finalPct = ovr ? (Number(ovr.pct)/100) : total;
     return { sid:r.student_id, email:r.email, name:r.full_name, sub:r.sub_status, reading:reading, quizzes:quizzes, arenas:arenas,
       practice:(r.practice_attempts>0?r.practice_correct/r.practice_attempts:null),
-      midterm:midScore, final:finScore, assignments:asg, computed:total, override:ovr, finalPct:finalPct };
+      midterm:midScore, final:finScore, midPaper:(offm!=null), finPaper:(offf!=null), assignments:asg, computed:total, override:ovr, finalPct:finalPct };
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;">'+(canGrade?'<button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button>':'')+'<button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+    '<div style="display:flex;gap:8px;">'+(canGrade?'<button class="btn btn-ghost btn-sm" id="paperExamsBtn" title="Enter scores for exams given on paper / in person; they count at your Midterm and Final weights">\uD83D\uDCDD Paper exams</button>':'')+(canGrade?'<button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button>':'')+'<button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+(g.name?('<div style="font-weight:400;font-size:11px;color:var(--text-subtle);">'+esc(g.email)+'</div>'):'')+'</th><td>'+subTag(g.sub)+'</td>'+
       '<td>'+pct(g.reading)+'</td><td>'+pct(g.quizzes)+'</td><td>'+pct(g.arenas)+'</td>'+
       '<td>'+(g.assignments===null?'<span class="tag dim">--</span>':pct(g.assignments))+'</td>'+
-      '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':pct(g.midterm))+'</td>'+
-      '<td>'+(g.final===null?'<span class="tag dim">--</span>':pct(g.final))+'</td>'+
+      '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':(pct(g.midterm)+(g.midPaper?' <span class="tag violet" title="paper / offline exam">paper</span>':'')))+'</td>'+
+      '<td>'+(g.final===null?'<span class="tag dim">--</span>':(pct(g.final)+(g.finPaper?' <span class="tag violet" title="paper / offline exam">paper</span>':'')))+'</td>'+
       '<td>'+pct(g.computed)+'</td>'+
       (canGrade?('<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'):('<td>'+(g.override?(esc(String(g.override.pct))+'%'):'\u2014')+'</td>'))+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
@@ -1740,6 +1829,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
   if($('itemStatsBtn')){ $('itemStatsBtn').addEventListener('click', function(){ openItemStats(c.id); }); }
   if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
+  if($('paperExamsBtn')){ $('paperExamsBtn').addEventListener('click', function(){ openOfflineExams(c); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
@@ -4959,12 +5049,18 @@ function computeWeightedGrade(callback){
     sb.from('it_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final,required_arenas').eq('id', courseId).maybeSingle(),
     sb.from('it_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
     sb.from('it_arena_results').select('arena_slug,score,played_at').eq('student_id', uid).eq('course_id', courseId),
-    sb.from('it_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true)
+    sb.from('it_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true),
+    sb.from('it_offline_exams').select('id,bucket').eq('course_id', courseId),
+    sb.from('it_offline_scores').select('offline_exam_id,pct').eq('student_id', uid)
   ]).then(function(r){
     var course = r[0].data; if (!course) { callback(null); return; }
     var prog = r[1].data ? r[1].data : [];
     var arenas = r[2].data ? r[2].data : [];
     var exams = r[3].data ? r[3].data : [];
+    var offB={}; (r[4]&&r[4].data?r[4].data:[]).forEach(function(e){ offB[e.id]=e.bucket; });
+    var offMv=[], offFv=[]; (r[5]&&r[5].data?r[5].data:[]).forEach(function(x){ var b=offB[x.offline_exam_id]; if(b==='midterm'){ offMv.push(Number(x.pct)); } else if(b==='final'){ offFv.push(Number(x.pct)); } });
+    var offMid = offMv.length ? (offMv.reduce(function(a,b){return a+b;},0)/offMv.length)/100 : null;
+    var offFin = offFv.length ? (offFv.reduce(function(a,b){return a+b;},0)/offFv.length)/100 : null;
     var W = { reading:Number(course.weight_reading), quizzes:Number(course.weight_quizzes), arenas:Number(course.weight_arenas), midterm:Number(course.weight_midterm), final:Number(course.weight_final) };
     var chaptersRead=0, quizSum=0, quizN=0, quizzesPassed=0;
     prog.forEach(function(p){ if(p.reading_done){ chaptersRead++; } if(p.quiz_passed){ quizzesPassed++; } if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSum+=Number(p.quiz_score); quizN++; } });
@@ -4975,6 +5071,7 @@ function computeWeightedGrade(callback){
     var fin = exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
     function finish(midScore, finScore){
+      if(offMid!=null){ midScore=offMid; } if(offFin!=null){ finScore=offFin; }
       var comps=[['Reading',reading,W.reading],['Quizzes',quizzes,W.quizzes],['Arenas',arenaScore,W.arenas]];
       if(W.midterm>0){ comps.push(['Midterm', midScore!==null?midScore:0, W.midterm, midScore===null]); }
       if(W.final>0){ comps.push(['Final', finScore!==null?finScore:0, W.final, finScore===null]); }
@@ -5087,9 +5184,12 @@ function fetchGradeBreakdown(courseId, studentId, reqN){
     sb.from('it_assignments').select('id,title,points').eq('course_id',courseId).eq('is_published',true).order('created_at',{ascending:true}),
     sb.from('it_submissions').select('assignment_id,score,feedback,submitted_at,graded_at').eq('student_id',studentId),
     sb.from('it_arena_deadlines').select('arena_slug,closes_at').eq('course_id',courseId),
-    sb.from('it_overrides').select('arena_slug,new_deadline').eq('student_id',studentId).eq('scope','arena')
+    sb.from('it_overrides').select('arena_slug,new_deadline').eq('student_id',studentId).eq('scope','arena'),
+    sb.from('it_offline_exams').select('id,name,bucket').eq('course_id',courseId),
+    sb.from('it_offline_scores').select('offline_exam_id,pct').eq('student_id',studentId)
   ]).then(function(r){
     var prog=r[0].data||[], arena=r[1].data||[], exams=r[2].data||[], asgs=r[3].data||[], subs=r[4].data||[];
+    var offExams=r[7]&&r[7].data?r[7].data:[]; var offScoreBy={}; (r[8]&&r[8].data?r[8].data:[]).forEach(function(x){ offScoreBy[x.offline_exam_id]=Number(x.pct); });
     var closeBy={}; (r[5]&&r[5].data?r[5].data:[]).forEach(function(x){ closeBy[x.arena_slug]=x.closes_at; });
     var ovBy={}; (r[6]&&r[6].data?r[6].data:[]).forEach(function(x){ if(x.arena_slug){ ovBy[x.arena_slug]=x.new_deadline; } });
     var progByCh={}; prog.forEach(function(p){ progByCh[p.chapter]=p; });
@@ -5121,6 +5221,7 @@ function fetchGradeBreakdown(courseId, studentId, reqN){
         if(taken){ var policy=e.attempt_scoring||'highest', tot=0; Object.keys(grp[e.id]).forEach(function(iid){ var arr=grp[e.id][iid],v=0; if(policy==='latest'){ v=arr[arr.length-1]; } else if(policy==='average'){ var sm=0; for(var k=0;k<arr.length;k++){ sm+=arr[k]; } v=sm/arr.length; } else { v=Math.max.apply(null,arr); } tot+=v; }); earned=tot; }
         return { title:(e.title||(e.kind==='final'?'Final exam':(e.kind==='midterm'?'Midterm':'Exam'))), earned:earned, total:e.total_points||0, taken:taken };
       });
+      offExams.forEach(function(oe){ var has=offScoreBy[oe.id]!==undefined; examRows.push({ title:(oe.name+' (paper · '+(oe.bucket==='final'?'final':'midterm')+')'), earned:has?offScoreBy[oe.id]:null, total:100, taken:has }); });
       var subBy={}; subs.forEach(function(x){ subBy[x.assignment_id]=x; });
       var asgRows=asgs.map(function(a){
         var sub=subBy[a.id]; var graded=sub&&sub.score!==null&&sub.score!==undefined;
