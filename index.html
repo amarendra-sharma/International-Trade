@@ -824,13 +824,17 @@ function canEditCourse(cid){ if(isOwnerOrAdmin()){ return true; } var s=staffRow
 // Load the courses where THIS user is a TA; returns true if any (=> TA mode).
 function loadStaffCourses(){
   if(!State.user){ State.staff=[]; return Promise.resolve(false); }
-  return sb.from('it_course_staff').select('course_id,can_view,can_grade,can_edit, it_courses(*)').eq('user_id',State.user.id).then(function(res){
-    var rows=res.data?res.data:[];
+  return sb.from('it_course_staff').select('course_id,can_view,can_grade,can_edit').eq('user_id',State.user.id).then(function(res){
+    var rows=(res && res.data)?res.data:[];
+    if(res && res.error){ console.warn('loadStaffCourses',res.error.message); }
     if(rows.length===0){ State.staff=[]; return false; }
     State.staff=rows.map(function(r){ return { course_id:r.course_id, can_view:r.can_view, can_grade:r.can_grade, can_edit:r.can_edit }; });
-    State.courses=rows.map(function(r){ return r.it_courses; }).filter(Boolean);
-    if(State.courses.length && !State.teachCourseId){ State.teachCourseId=State.courses[0].id; }
-    return true;
+    var ids=rows.map(function(r){ return r.course_id; });
+    return sb.from('it_courses').select('*').in('id',ids).then(function(cr){
+      State.courses=(cr && cr.data)?cr.data:[];
+      if(State.courses.length && !State.teachCourseId){ State.teachCourseId=State.courses[0].id; }
+      return State.courses.length>0;
+    });
   }, function(){ State.staff=[]; return false; });
 }
 // Show only the Teach tabs a TA is entitled to (owner/admin see all elsewhere).
@@ -867,9 +871,19 @@ function openManageTAs(course){
   $('taClose').addEventListener('click', close);
   m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
   function refresh(){
-    sb.from('it_course_staff').select('user_id,can_view,can_grade,can_edit, it_profiles(email,full_name)').eq('course_id',course.id).then(function(r){
+    sb.from('it_course_staff').select('user_id,can_view,can_grade,can_edit').eq('course_id',course.id).then(function(r){
+      if(r.error){ $('taList').innerHTML='<div class="card empty">Could not load TAs: '+esc(r.error.message)+'</div>'; return; }
       var rows=r.data?r.data:[];
       if(rows.length===0){ $('taList').innerHTML='<div class="card empty">No TAs yet.</div>'; return; }
+      sb.from('it_profiles').select('id,email,full_name').in('id',rows.map(function(x){ return x.user_id; })).then(function(pr){
+        var pm={}; (pr.data||[]).forEach(function(p){ pm[p.id]=p; });
+        rows.forEach(function(x){ x.it_profiles=pm[x.user_id]||null; });
+        renderRows(rows);
+      });
+    });
+  }
+  function renderRows(rows){
+    (function(){
       var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>TA</th><th>View</th><th>Grade</th><th>Edit</th><th></th></tr></thead><tbody>';
       rows.forEach(function(t){
         var p=t.it_profiles||{}; var who=esc(p.full_name||p.email||t.user_id);
@@ -890,7 +904,7 @@ function openManageTAs(course){
         var uid=b.getAttribute('data-tarem');
         sb.from('it_course_staff').delete().eq('course_id',course.id).eq('user_id',uid).then(function(d){ if(d.error){ msg(d.error.message,false); } else { refresh(); } });
       }); });
-    });
+    })();
   }
   $('taAdd').addEventListener('click', function(){
     var email=($('taEmail').value||'').trim().toLowerCase();
