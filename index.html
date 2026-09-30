@@ -867,12 +867,13 @@ function openManageTAs(course){
     '<div class="inline-actions" style="justify-content:flex-end;margin-top:14px;"><button class="btn btn-ghost" id="taClose">Close</button></div></div>';
   $('modalHost').appendChild(m);
   function close(){ $('modalHost').innerHTML=''; }
+  function taErr(e){ var t=(e&&e.message)||'Unknown error'; return /it_course_staff|schema cache|does not exist|relation/i.test(t)? t+' — the TA database setup (supabase/55_course_ta.sql) has not been run in Supabase yet.' : t; }
   function msg(t,ok){ var e=$('taMsg'); e.textContent=t; e.className='msg '+(ok?'ok':'err'); e.style.display='block'; }
   $('taClose').addEventListener('click', close);
   m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
   function refresh(){
     sb.from('it_course_staff').select('user_id,can_view,can_grade,can_edit').eq('course_id',course.id).then(function(r){
-      if(r.error){ $('taList').innerHTML='<div class="card empty">Could not load TAs: '+esc(r.error.message)+'</div>'; return; }
+      if(r.error){ $('taList').innerHTML='<div class="card empty">Could not load TAs: '+esc(taErr(r.error))+'</div>'; return; }
       var rows=r.data?r.data:[];
       if(rows.length===0){ $('taList').innerHTML='<div class="card empty">No TAs yet.</div>'; return; }
       sb.from('it_profiles').select('id,email,full_name').in('id',rows.map(function(x){ return x.user_id; })).then(function(pr){
@@ -917,7 +918,7 @@ function openManageTAs(course){
                 added_by:State.user.id };
       sb.from('it_course_staff').upsert(row,{onConflict:'course_id,user_id'}).then(function(ins){
         $('taAdd').disabled=false;
-        if(ins.error){ msg(ins.error.message,false); return; }
+        if(ins.error){ msg(taErr(ins.error),false); return; }
         $('taEmail').value=''; msg('TA added.',true); refresh();
       });
     });
