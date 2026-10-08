@@ -486,7 +486,7 @@ var STUDENT_CHAPTERS = [
   {n:2,title:'The Ricardian Model',mins:34,slug:'ricardian'},
   {n:3,title:'Specific Factors & Income Distribution',mins:28,slug:'specific-factors'},
   {n:4,title:'Heckscher-Ohlin',mins:45,slug:'heckscher-ohlin'},
-  {n:5,title:'Standard Trade Model',mins:30,slug:'terms-of-trade'},
+  {n:5,title:'Standard Trade Model',mins:45,slug:'terms-of-trade'},
   {n:6,title:'Scale Economies & New Trade Theory',mins:30,slug:'scale-economies'},
   {n:7,title:'Firms in the Global Economy',mins:30,slug:'firm-export'},
   {n:8,title:'Tariffs & Trade Policy',mins:32,slug:'tariff-lab'},
@@ -4109,9 +4109,9 @@ function loadHome() {
   ensureHomeNamePrompt(_nm);
   // counts: graded attempts, correct, arenas played
   Promise.all([
-    sb.from('it_attempts').select('is_correct', { count: 'exact' }).eq('student_id', uid).not('graded_at','is',null),
-    sb.from('it_arena_results').select('id', { count: 'exact' }).eq('student_id', uid),
-    sb.from('it_chapter_progress').select('chapter', { count: 'exact' }).eq('student_id', uid).eq('reading_done', true)
+    sb.from('it_attempts').select('is_correct').eq('student_id', uid).not('graded_at','is',null),
+    sb.from('it_arena_results').select('id', { count: 'exact', head: true }).eq('student_id', uid),
+    sb.from('it_chapter_progress').select('chapter', { count: 'exact', head: true }).eq('student_id', uid).eq('reading_done', true)
   ]).then(function(r) {
     var attempts = (r[0].data ? r[0].data : []);
     var correct = attempts.filter(function(a){ return a.is_correct; }).length;
