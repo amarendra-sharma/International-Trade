@@ -564,6 +564,219 @@ var State = { user:null, profile:null, role:'student', courses:[], currentCourse
 /* ---- helpers (no optional chaining / nullish) ---- */
 function $(id){ return document.getElementById(id); }
 function esc(s){ if(s===null||s===undefined){return '';} return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* ====================================================================
+   DUE-TO-DATE LETTER GRADES
+   --------------------------------------------------------------------
+   An item counts toward the letter as soon as its DEADLINE HAS PASSED.
+   Work not done by then is a zero; work not yet due is not in the
+   denominator at all. Every student in a section is therefore marked
+   out of the SAME total, and the letter answers "how are they doing on
+   everything that was due?" rather than "how did they do on whichever
+   bits they chose to do?"
+
+   Deadline per component in this course:
+     reading ch.n                 it_reading_deadlines.closes_at
+     quiz ch.n                    it_quiz_deadlines.closes_at
+     arena                        it_arena_deadlines.closes_at
+     midterm / final              it_exams.closes_at
+   This course has no attendance table and gives assignments no weight, so
+   neither enters the letter.
+   An exam ALSO counts for a student who already has a graded score on
+   it, because a paper exam normally carries no close date and real
+   graded work must never be discarded. To score the students who missed
+   a paper exam, enter 0 for them (or set the exam's close date) and
+   they are marked on it like everyone else.
+
+   A component with nothing due yet drops out and the remaining weights
+   renormalize, exactly as the weighted total does. Nothing is stored:
+   this is a derived display, and a manual Override still replaces it.
+   ==================================================================== */
+function dueBefore(ts, nowMs){
+  if(ts===null || ts===undefined || ts===''){ return false; }
+  var t=new Date(ts).getTime();
+  if(isNaN(t)){ return false; }
+  return t <= nowMs;
+}
+/* Chapters whose deadline has passed. Empty when the course has set no
+   deadlines -- that component then drops out of the letter. */
+function dueChapters(deadlineRows, nowMs){
+  var out=[];
+  (deadlineRows||[]).forEach(function(d){
+    if(d && d.chapter!==null && d.chapter!==undefined && dueBefore(d.closes_at, nowMs)){ out.push(Number(d.chapter)); }
+  });
+  return out;
+}
+function dueArenaSlugs(deadlineRows, nowMs){
+  var out=[];
+  (deadlineRows||[]).forEach(function(d){
+    if(d && d.arena_slug && dueBefore(d.closes_at, nowMs)){ out.push(d.arena_slug); }
+  });
+  return out;
+}
+/* Weighted average over the components that have something due. Each part
+   is { key, w:weight, n:size of the due set, earned:sum over that set }.
+   Returns null when nothing is due yet. */
+function dueWeightedPct(parts){
+  var w=0, s=0;
+  (parts||[]).forEach(function(p){
+    if(!p || !(p.w>0) || !(p.n>0)){ return; }
+    var frac=p.earned/p.n;
+    if(isNaN(frac) || frac<0){ frac=0; }
+    if(frac>1){ frac=1; }
+    w+=p.w; s+=frac*p.w;
+  });
+  return w>0 ? s/w : null;
+}
+/* A set lookup that tolerates string/number chapter keys. */
+function dueSetOf(list){ var m={}; (list||[]).forEach(function(x){ m[x]=true; }); return m; }
+
+/* ---- the grade scale (per course, falling back to the standard one) ---- */
+var DEFAULT_GRADE_SCALE = [
+  {min:93,letter:"A"},{min:90,letter:"A-"},{min:87,letter:"B+"},{min:83,letter:"B"},
+  {min:80,letter:"B-"},{min:77,letter:"C+"},{min:73,letter:"C"},{min:70,letter:"C-"},
+  {min:67,letter:"D+"},{min:63,letter:"D"},{min:60,letter:"D-"},{min:0,letter:"F"}
+];
+function effectiveGradeScale(c){
+  var sc = c && c.grade_scale;
+  if(!sc || !sc.length){ return DEFAULT_GRADE_SCALE; }
+  var arr=[];
+  for(var i=0;i<sc.length;i++){
+    if(sc[i] && sc[i].letter!==undefined && sc[i].letter!=='' && !isNaN(Number(sc[i].min))){
+      arr.push({ min:Number(sc[i].min), letter:String(sc[i].letter) });
+    }
+  }
+  if(!arr.length){ return DEFAULT_GRADE_SCALE; }
+  arr.sort(function(a,b){ return b.min - a.min; });
+  return arr;
+}
+function letterForPct(pct, scale){
+  if(pct===null||pct===undefined||isNaN(Number(pct))){ return "—"; }
+  scale = (scale && scale.length) ? scale : DEFAULT_GRADE_SCALE;
+  for(var i=0;i<scale.length;i++){ if(Number(pct) >= Number(scale[i].min)){ return scale[i].letter; } }
+  return scale[scale.length-1].letter;
+}
+/* Instructor: edit the per-course grade scale. Needs the grade_scale column
+   (it_80_grade_scale.sql); until that is applied, saving reports it plainly and
+   every course falls back to the standard scale above. */
+function openGradeScaleEditor(c, onSaved){
+  var scale = effectiveGradeScale(c).slice();
+  var m=document.createElement('div'); m.className='modal-bg';
+  function rowsHtml(){
+    var h='';
+    for(var i=0;i<scale.length;i++){
+      h+='<div class="row2" data-gsrow="'+i+'" style="gap:8px;align-items:flex-end;margin-bottom:6px;">'+
+        '<div class="field" style="margin:0;width:100px;"><label>Letter</label><input class="gsL" value="'+esc(scale[i].letter)+'"></div>'+
+        '<div class="field" style="margin:0;width:130px;"><label>Min %</label><input class="gsM" type="number" min="0" max="100" step="0.1" value="'+esc(String(scale[i].min))+'"></div>'+
+        '<button class="btn btn-ghost btn-sm gsDel" type="button">Remove</button></div>';
+    }
+    return h;
+  }
+  m.innerHTML='<div class="modal" style="max-width:460px;"><h2>Grade scale</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Letter grades are assigned automatically from each student’s <b>To date</b> percentage — their score on everything whose deadline has passed — as the highest letter whose <b>Min %</b> they meet. Applies to <b>'+esc(c.title||'this course')+'</b>.</div>'+
+    '<div id="gsRows">'+rowsHtml()+'</div>'+
+    '<div class="inline-actions" style="margin-top:6px;gap:8px;"><button class="btn btn-ghost btn-sm" id="gsAdd" type="button">+ Add band</button><button class="btn btn-ghost btn-sm" id="gsReset" type="button">Reset to default</button></div>'+
+    '<div id="gsMsg" class="msg"></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;margin-top:10px;"><button class="btn btn-ghost" id="gsCancel">Cancel</button><button class="btn btn-primary" id="gsSave">Save scale</button></div></div>';
+  document.body.appendChild(m);
+  function close(){ if(m.parentNode){ m.parentNode.removeChild(m); } }
+  function readRows(){
+    var out=[]; Array.prototype.forEach.call(m.querySelectorAll('[data-gsrow]'), function(rw){
+      var L=rw.querySelector('.gsL').value.trim(); var Mv=rw.querySelector('.gsM').value;
+      if(L!=='' && Mv!==''){ out.push({ letter:L, min:Number(Mv) }); }
+    });
+    return out;
+  }
+  function rebind(){
+    Array.prototype.forEach.call(m.querySelectorAll('.gsDel'), function(b){
+      b.addEventListener('click', function(){ scale=readRows(); var idx=parseInt(b.parentNode.getAttribute('data-gsrow'),10); scale.splice(idx,1); m.querySelector('#gsRows').innerHTML=rowsHtml(); rebind(); });
+    });
+  }
+  rebind();
+  m.querySelector('#gsCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  m.querySelector('#gsAdd').addEventListener('click', function(){ scale=readRows(); scale.push({letter:'',min:0}); m.querySelector('#gsRows').innerHTML=rowsHtml(); rebind(); });
+  m.querySelector('#gsReset').addEventListener('click', function(){ scale=DEFAULT_GRADE_SCALE.slice(); m.querySelector('#gsRows').innerHTML=rowsHtml(); rebind(); });
+  m.querySelector('#gsSave').addEventListener('click', function(){
+    var arr=readRows(); var msg=m.querySelector('#gsMsg'); var btn=m.querySelector('#gsSave');
+    if(arr.length===0){ msg.className='msg err'; msg.textContent='Add at least one grade band.'; return; }
+    for(var i=0;i<arr.length;i++){ if(isNaN(arr[i].min)||arr[i].min<0||arr[i].min>100){ msg.className='msg err'; msg.textContent='Each Min % must be between 0 and 100.'; return; } }
+    arr.sort(function(a,b){ return b.min-a.min; });
+    btn.disabled=true;
+    sb.from('it_courses').update({ grade_scale: arr }).eq('id', c.id).then(function(res){
+      btn.disabled=false;
+      if(res.error){
+        msg.className='msg err';
+        msg.textContent=(String(res.error.message||'').toLowerCase().indexOf('grade_scale')>=0
+          ? 'Custom grade scales are not installed on this course yet — run it_80_grade_scale.sql, then reopen this window. Until then every course uses the standard scale shown here.'
+          : res.error.message);
+        return;
+      }
+      c.grade_scale = arr;
+      close();
+      if(typeof onSaved==='function'){ onSaved(); }
+    }, function(){ btn.disabled=false; msg.className='msg err'; msg.textContent='Could not save the scale.'; });
+  });
+}
+/* The audit trail behind one student's letter: every item that was due, what
+   they earned on it, and how it was weighted. This is what you show a student
+   who queries their letter grade. */
+function openLetterBasis(studentName, g, scale){
+  var parts=(g && g.dueParts)?g.dueParts.filter(function(x){ return x.w>0 && x.n>0; }):[];
+  var dw=parts.reduce(function(s,x){ return s+x.w; },0);
+  var m=document.createElement('div'); m.className='modal-bg';
+  var h='<div class="modal" style="max-width:640px;"><h3 style="margin-bottom:4px;">Letter grade — '+esc(studentName||'student')+'</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Performance on everything whose deadline has passed. The “out of” column is the same for every student in the section, so work not done counts as 0. Items not yet due are left out entirely.</p>';
+  if(!parts.length){
+    h+='<div class="card empty" style="margin-top:0;">Nothing is due yet in this course, so there is no letter grade to show.</div>';
+  } else {
+    h+='<table class="data-table"><thead><tr><th scope="col">Component</th><th scope="col">Earned</th><th scope="col">Out of</th><th scope="col">Score</th><th scope="col">Weight</th><th scope="col">Contribution</th></tr></thead><tbody>';
+    parts.forEach(function(x){
+      var fr=x.n>0?(x.earned/x.n):0; if(isNaN(fr)||fr<0){fr=0;} if(fr>1){fr=1;}
+      var eff=dw>0?(x.w/dw):0;
+      h+='<tr><th scope="row" style="font-weight:400;">'+esc(x.key)+'</th>'+
+        '<td>'+(Math.round(x.earned*100)/100)+'</td><td>'+(Math.round(x.n*100)/100)+'</td>'+
+        '<td>'+(Math.round(fr*1000)/10)+'%</td><td>'+Math.round(eff*1000)/10+'%</td>'+
+        '<td>'+Math.round(fr*eff*1000)/10+'%</td></tr>';
+    });
+    h+='</tbody><tfoot><tr><th scope="row" style="font-weight:700;">To date</th><td></td><td></td><td></td><td></td>'+
+      '<td style="font-weight:800;">'+((g.duePct===null||g.duePct===undefined)?'—':(Math.round(g.duePct*1000)/10+'%'))+'</td></tr>'+
+      '<tr><th scope="row" style="font-weight:700;">Letter</th><td></td><td></td><td></td><td></td>'+
+      '<td style="font-weight:800;">'+((g.letterBasis===null||g.letterBasis===undefined)?'—':esc(letterForPct(g.letterBasis*100, scale)))+
+      (g.override?' <span class="tag violet" title="a manual override replaces the due-to-date total">ovr</span>':'')+'</td></tr></tfoot></table>';
+    if(g.override){
+      h+='<div style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;">A manual override of '+esc(String(g.override.pct))+'% is set for this student, so the letter comes from that rather than from the total above.</div>';
+    }
+  }
+  h+='<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="lbClose">Close</button></div></div>';
+  m.innerHTML=h;
+  document.body.appendChild(m);
+  function shut(){ if(m.parentNode){ m.parentNode.removeChild(m); } }
+  m.querySelector('#lbClose').addEventListener('click', shut);
+  m.addEventListener('click', function(e){ if(e.target===m){ shut(); } });
+}
+/* Per-arena performance for the due-to-date letter: the average of the first
+   ARENA_MAX_ATTEMPTS attempts, exactly as computeArenaScore scores an arena.
+   Returned per slug so the caller can score only the arenas that are due. */
+function arenaPerfBySlug(rows){
+  var byArena={};
+  (rows||[]).forEach(function(r){
+    if(!r || !r.arena_slug){ return; }
+    if(ARENA_SLUGS.indexOf(r.arena_slug)===-1){ return; }
+    if(!byArena[r.arena_slug]){ byArena[r.arena_slug]=[]; }
+    byArena[r.arena_slug].push(r);
+  });
+  var out={};
+  Object.keys(byArena).forEach(function(slug){
+    var a=byArena[slug];
+    a.sort(function(x,y){ return new Date(x.played_at)-new Date(y.played_at); });
+    var take=Math.min(ARENA_MAX_ATTEMPTS, a.length), s=0, cnt=0;
+    for(var k=0;k<take;k++){ var sc=a[k].score; s += (sc!==null&&sc!==undefined)?Number(sc):0; cnt++; }
+    var perf=cnt>0?(s/cnt):0;
+    if(perf>1){ perf=1; } if(perf<0||isNaN(perf)){ perf=0; }
+    out[slug]=perf;
+  });
+  return out;
+}
 function pct(x){ if(x===null||x===undefined||isNaN(x)){return '0%';} return Math.round(x*100)+'%'; }
 function money(cents,cur){ var c=(cents?cents:0)/100; var sym=(cur==='usd'||!cur)?'$':''; return sym+c.toFixed(2)+(sym?'':' '+(cur?cur.toUpperCase():'')); }
 function show(el){ if(el){el.classList.remove('hidden');} }
@@ -1717,16 +1930,46 @@ function renderGradebook(host){
   var c=findCourse(State.teachCourseId);
   var weights={reading:c.weight_reading,quizzes:c.weight_quizzes,arenas:c.weight_arenas,midterm:c.weight_midterm,final:c.weight_final};
   // 1) gradebook view rows, 2) published exams, 3) exam attempts, + assignments/overrides
+  // Per-chapter rows for the whole course. it_gradebook_v hands back course-wide
+  // TOTALS, which cannot be narrowed to the chapters whose deadline has passed --
+  // and that narrowing is what makes the letter comparable between students.
+  // Paged, because a full section times 14 chapters passes the 1000-row cap.
+  function fetchAllChapterProgress(){
+    var all=[], PAGE=1000;
+    function page(from){
+      return sb.from('it_chapter_progress')
+        .select('student_id,chapter,reading_done,quiz_score')
+        .eq('course_id',State.teachCourseId)
+        .order('student_id',{ascending:true})
+        .range(from, from+PAGE-1)
+        .then(function(res){
+          if(res && res.error){ return { data: all, error: res.error }; }
+          var got=(res && res.data)?res.data:[];
+          all=all.concat(got);
+          if(got.length < PAGE){ return { data: all }; }
+          if(from > 500000){ return { data: all }; }
+          return page(from + PAGE);
+        });
+    }
+    return page(0);
+  }
   Promise.all([
     sb.from('it_gradebook_v').select('*').eq('course_id',State.teachCourseId),
-    sb.from('it_exams').select('id,kind,total_points,is_published,attempt_scoring').eq('course_id',State.teachCourseId).eq('is_published',true),
-    sb.from('it_chapter_progress').select('student_id,quiz_score').eq('course_id',State.teachCourseId)
+    sb.from('it_exams').select('id,kind,total_points,is_published,attempt_scoring,closes_at').eq('course_id',State.teachCourseId).eq('is_published',true),
+    fetchAllChapterProgress(),
+    sb.from('it_reading_deadlines').select('chapter,closes_at').eq('course_id',State.teachCourseId),
+    sb.from('it_quiz_deadlines').select('chapter,closes_at').eq('course_id',State.teachCourseId),
+    sb.from('it_arena_deadlines').select('arena_slug,closes_at').eq('course_id',State.teachCourseId)
   ]).then(function(r){
     var rows=r[0].data?r[0].data:[];
     var exams=r[1].data?r[1].data:[];
+    var progRows=r[2].data?r[2].data:[];
+    var readDl=r[3].data?r[3].data:[];
+    var quizDl=r[4].data?r[4].data:[];
+    var arenaDl=r[5].data?r[5].data:[];
     // Quiz component = sum(quiz_score) / 14 chapters (unattempted quizzes count as 0),
     // matching how Reading and the student My Grades view are computed.
-    var quizSumBy={}; (r[2].data?r[2].data:[]).forEach(function(p){ if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSumBy[p.student_id]=(quizSumBy[p.student_id]||0)+Number(p.quiz_score); } });
+    var quizSumBy={}; progRows.forEach(function(p){ if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSumBy[p.student_id]=(quizSumBy[p.student_id]||0)+Number(p.quiz_score); } });
     var midterm=exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin=exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
@@ -1794,13 +2037,41 @@ function renderGradebook(host){
         var asgScore={};
         Object.keys(earn).forEach(function(sid){ asgScore[sid]= poss[sid]>0 ? (earn[sid]/poss[sid]) : null; });
         var overrideOf={}; ovr.forEach(function(o){ overrideOf[o.student_id]={ pct:o.override_pct, note:o.note }; });
-        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy,offlineBy);
+        // ---- DUE-TO-DATE sets: one common denominator per component for the
+        // whole section. A student who did not do a due item scores 0 on it
+        // rather than dropping it from their own denominator.
+        var _now=Date.now();
+        var _dueRead=dueChapters(readDl, _now);
+        var _dueQuiz=dueChapters(quizDl, _now);
+        var _dueAr=dueArenaSlugs(arenaDl, _now);
+        var _dueReadSet=dueSetOf(_dueRead), _dueQuizSet=dueSetOf(_dueQuiz), _dueArSet=dueSetOf(_dueAr);
+        var dueRead={}, dueQuiz={};
+        progRows.forEach(function(p){
+          var ch=Number(p.chapter);
+          if(_dueReadSet[ch] && p.reading_done){ dueRead[p.student_id]=(dueRead[p.student_id]||0)+1; }
+          if(_dueQuizSet[ch]){
+            var qs=(p.quiz_score!==null&&p.quiz_score!==undefined)?Number(p.quiz_score):0;
+            if(isNaN(qs)||qs<0){ qs=0; } if(qs>1){ qs=1; }
+            dueQuiz[p.student_id]=(dueQuiz[p.student_id]||0)+qs;
+          }
+        });
+        var dueArenaPts={};
+        Object.keys(arenaByStudent).forEach(function(sid){
+          var perf=arenaPerfBySlug(arenaByStudent[sid]); var tot=0;
+          _dueAr.forEach(function(sl){ tot += (perf[sl]!==undefined?perf[sl]:0); });
+          dueArenaPts[sid]=tot;
+        });
+        var due={ now:_now, readChapters:_dueRead.length, quizChapters:_dueQuiz.length,
+                  arenas:_dueAr.length, read:dueRead, quiz:dueQuiz, arenaPts:dueArenaPts };
+        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy,offlineBy,due);
       });
     });
   });
 }
-function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy,offlineBy){
+function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf,quizSumBy,offlineBy,due){
   asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {}; quizSumBy = quizSumBy || {}; offlineBy = offlineBy || {};
+  due = due || { now:Date.now(), readChapters:0, quizChapters:0, arenas:0, read:{}, quiz:{}, arenaPts:{} };
+  var gscale=effectiveGradeScale(c);
   var canGrade=canGradeCourse(c.id);
   if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
   var computed=rows.map(function(r){
@@ -1820,14 +2091,32 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
     var asg=(asgScore[r.student_id]!==undefined&&asgScore[r.student_id]!==null)?asgScore[r.student_id]:null;
     var ovr=overrideOf[r.student_id]?overrideOf[r.student_id]:null;
     var finalPct = ovr ? (Number(ovr.pct)/100) : total;
+    // ---- LETTER BASIS: performance on everything DUE SO FAR, each component
+    // scored over the whole due set, work not done counted as 0.
+    var dparts=[
+      { key:'Reading', w:weights.reading, n:due.readChapters, earned:(due.read[r.student_id]||0) },
+      { key:'Quizzes', w:weights.quizzes, n:due.quizChapters, earned:(due.quiz[r.student_id]||0) },
+      { key:'Arenas',  w:weights.arenas,  n:due.arenas,       earned:(due.arenaPts[r.student_id]||0) }
+    ];
+    // An exam counts once its close date has passed, or as soon as it is graded
+    // for this student (a paper exam carries no close date).
+    if(midScore!==null || (midterm && dueBefore(midterm.closes_at, due.now))){
+      dparts.push({ key:'Midterm', w:weights.midterm, n:1, earned:(midScore===null?0:midScore) });
+    }
+    if(finScore!==null || (fin && dueBefore(fin.closes_at, due.now))){
+      dparts.push({ key:'Final exam', w:weights.final, n:1, earned:(finScore===null?0:finScore) });
+    }
+    var duePct = dueWeightedPct(dparts);
+    var letterBasis = ovr ? (Number(ovr.pct)/100) : duePct;
     return { sid:r.student_id, email:r.email, name:r.full_name, sub:r.sub_status, reading:reading, quizzes:quizzes, arenas:arenas,
       practice:(r.practice_attempts>0?r.practice_correct/r.practice_attempts:null),
-      midterm:midScore, final:finScore, midPaper:(offm!=null), finPaper:(offf!=null), assignments:asg, computed:total, override:ovr, finalPct:finalPct };
+      midterm:midScore, final:finScore, midPaper:(offm!=null), finPaper:(offf!=null), assignments:asg, computed:total, override:ovr, finalPct:finalPct,
+      duePct:duePct, dueParts:dparts, letterBasis:letterBasis };
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
-    '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;">'+(canGrade?'<button class="btn btn-ghost btn-sm" id="paperExamsBtn" title="Enter scores for exams given on paper / in person; they count at your Midterm and Final weights">\uD83D\uDCDD Paper exams</button>':'')+(canGrade?'<button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button>':'')+'<button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
-  html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
+    '<div style="font-size:12.5px;color:var(--text-muted);max-width:620px;"><b>To date</b> is the number the <b>Letter</b> comes from: performance on everything whose deadline has passed, with work not done counted as 0, so every student is marked out of the same total. Click a letter to see the items behind it. <b>Weighted</b> projects the whole course instead \u2014 work not yet due also counts as 0 there, so it stays low early in the term. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade, the Letter, and what the CSV exports.</div>'+
+    '<div style="display:flex;gap:8px;">'+(canGrade?'<button class="btn btn-ghost btn-sm" id="paperExamsBtn" title="Enter scores for exams given on paper / in person; they count at your Midterm and Final weights">\uD83D\uDCDD Paper exams</button>':'')+(canGrade?'<button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button>':'')+'<button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button>'+(canGrade?'<button class="btn btn-ghost btn-sm" id="gsBtn" title="Set the percentage cut-offs for each letter grade">Grade scale</button>':'')+'<button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+  html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col" title="Performance on work whose deadline has passed \u2014 the basis for the letter">To date</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col" title="Auto letter from the grade scale">Letter</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+(g.name?('<div style="font-weight:400;font-size:11px;color:var(--text-subtle);">'+esc(g.email)+'</div>'):'')+'</th><td>'+subTag(g.sub)+'</td>'+
       '<td>'+pct(g.reading)+'</td><td>'+pct(g.quizzes)+'</td><td>'+pct(g.arenas)+'</td>'+
@@ -1835,13 +2124,23 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':(pct(g.midterm)+(g.midPaper?' <span class="tag violet" title="paper / offline exam">paper</span>':'')))+'</td>'+
       '<td>'+(g.final===null?'<span class="tag dim">--</span>':(pct(g.final)+(g.finPaper?' <span class="tag violet" title="paper / offline exam">paper</span>':'')))+'</td>'+
       '<td>'+pct(g.computed)+'</td>'+
+      '<td style="font-weight:600;" title="performance on work due so far">'+((g.duePct===null||g.duePct===undefined)?'<span class="tag dim">--</span>':pct(g.duePct))+'</td>'+
       (canGrade?('<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'):('<td>'+(g.override?(esc(String(g.override.pct))+'%'):'\u2014')+'</td>'))+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
+      '<td><button class="btn btn-ghost btn-sm" data-letter="'+g.sid+'" data-lname="'+esc(g.name||g.email||'')+'" title="'+((g.letterBasis===null||g.letterBasis===undefined)?'nothing due yet':(g.override?(Math.round(g.letterBasis*100)+'% (manual override)'):(Math.round(g.letterBasis*100)+'% on work due to date')))+'" style="font-weight:700;padding:0 4px;">'+((g.letterBasis===null||g.letterBasis===undefined)?'\u2014':esc(letterForPct(g.letterBasis*100, gscale)))+'</button></td>'+
       '<td>'+(canGrade?'<button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> ':'')+'<button class="btn btn-ghost btn-sm" data-detail="'+g.sid+'" data-dname="'+esc(g.name||g.email)+'" title="See this student\u2019s score on every quiz, reading, arena, exam and assignment">Grades</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
   $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
+  if($('gsBtn')){ $('gsBtn').addEventListener('click', function(){ openGradeScaleEditor(c, function(){ renderGradebook(host); }); }); }
+  Array.prototype.forEach.call(host.querySelectorAll('[data-letter]'), function(b){
+    b.addEventListener('click', function(){
+      var sid=b.getAttribute('data-letter'), gObj=null;
+      for(var i=0;i<computed.length;i++){ if(computed[i].sid===sid){ gObj=computed[i]; break; } }
+      openLetterBasis(b.getAttribute('data-lname'), gObj, gscale);
+    });
+  });
   if($('itemStatsBtn')){ $('itemStatsBtn').addEventListener('click', function(){ openItemStats(c.id); }); }
   if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
   if($('paperExamsBtn')){ $('paperExamsBtn').addEventListener('click', function(){ openOfflineExams(c); }); }
@@ -1863,13 +2162,15 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
 }
 function subTag(s){ if(s==='active'){return '<span class="tag green">active</span>';} if(s==='pending'){return '<span class="tag amber">pending</span>';} if(s==='expired'){return '<span class="tag rose">expired</span>';} if(s==='comped'){return '<span class="tag violet">comped</span>';} return '<span class="tag dim">'+esc(s)+'</span>'; }
 function exportCSV(c,rows){
-  var head=['Student','Email','Subscription','Reading%','Quizzes%','Arenas%','Assignments%','Midterm%','Final exam%','Weighted%','Override%','Final grade%'];
+  var gscale=effectiveGradeScale(c);
+  var head=['Student','Email','Subscription','Reading%','Quizzes%','Arenas%','Assignments%','Midterm%','Final exam%','Weighted%','To date%','Override%','Final grade%','Letter'];
   var lines=[head.join(',')];
   rows.forEach(function(g){
     function p(x){ return x===null||x===undefined?'':Math.round(x*100); }
     var ovr = g.override ? g.override.pct : '';
     var line=[ '"'+(g.name||'').replace(/"/g,'""')+'"', '"'+(g.email||'')+'"', g.sub,
-      p(g.reading),p(g.quizzes),p(g.arenas),p(g.assignments),p(g.midterm),p(g.final),p(g.computed), ovr, p(g.finalPct) ];
+      p(g.reading),p(g.quizzes),p(g.arenas),p(g.assignments),p(g.midterm),p(g.final),p(g.computed), p(g.duePct), ovr, p(g.finalPct),
+      '"'+((g.letterBasis===null||g.letterBasis===undefined)?'\u2014':letterForPct(g.letterBasis*100, gscale))+'"' ];
     lines.push(line.join(','));
   });
   var blob=new Blob([lines.join('\n')],{type:'text/csv'});
@@ -5061,12 +5362,17 @@ function computeWeightedGrade(callback){
     return;
   }
   Promise.all([
-    sb.from('it_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final,required_arenas').eq('id', courseId).maybeSingle(),
+    // select('*') rather than naming columns: it picks up grade_scale once that
+    // column exists without failing the whole query before the migration runs.
+    sb.from('it_courses').select('*').eq('id', courseId).maybeSingle(),
     sb.from('it_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
     sb.from('it_arena_results').select('arena_slug,score,played_at').eq('student_id', uid).eq('course_id', courseId),
-    sb.from('it_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true),
+    sb.from('it_exams').select('id,kind,total_points,attempt_scoring,closes_at').eq('course_id', courseId).eq('is_published', true),
     sb.from('it_offline_exams').select('id,bucket').eq('course_id', courseId),
-    sb.from('it_offline_scores').select('offline_exam_id,pct').eq('student_id', uid)
+    sb.from('it_offline_scores').select('offline_exam_id,pct').eq('student_id', uid),
+    sb.from('it_reading_deadlines').select('chapter,closes_at').eq('course_id', courseId),
+    sb.from('it_quiz_deadlines').select('chapter,closes_at').eq('course_id', courseId),
+    sb.from('it_arena_deadlines').select('arena_slug,closes_at').eq('course_id', courseId)
   ]).then(function(r){
     var course = r[0].data; if (!course) { callback(null); return; }
     var prog = r[1].data ? r[1].data : [];
@@ -5085,6 +5391,25 @@ function computeWeightedGrade(callback){
     var midterm = exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin = exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
+    // ---- DUE-TO-DATE tallies: the basis for the letter grade. Same rule as the
+    // instructor gradebook (see dueWeightedPct), so the two always agree.
+    var _now=Date.now();
+    var _dueRead=dueChapters(r[6]&&r[6].data?r[6].data:[], _now);
+    var _dueQuiz=dueChapters(r[7]&&r[7].data?r[7].data:[], _now);
+    var _dueAr=dueArenaSlugs(r[8]&&r[8].data?r[8].data:[], _now);
+    var _dueReadSet=dueSetOf(_dueRead), _dueQuizSet=dueSetOf(_dueQuiz);
+    var _dRead=0, _dQuiz=0;
+    prog.forEach(function(p){
+      var ch=Number(p.chapter);
+      if(_dueReadSet[ch] && p.reading_done){ _dRead++; }
+      if(_dueQuizSet[ch]){
+        var qs=(p.quiz_score!==null&&p.quiz_score!==undefined)?Number(p.quiz_score):0;
+        if(isNaN(qs)||qs<0){ qs=0; } if(qs>1){ qs=1; }
+        _dQuiz+=qs;
+      }
+    });
+    var _perf=arenaPerfBySlug(arenas), _dArena=0;
+    _dueAr.forEach(function(sl){ _dArena += (_perf[sl]!==undefined?_perf[sl]:0); });
     function finish(midScore, finScore){
       if(offMid!=null){ midScore=offMid; } if(offFin!=null){ finScore=offFin; }
       var comps=[['Reading',reading,W.reading],['Quizzes',quizzes,W.quizzes],['Arenas',arenaScore,W.arenas]];
@@ -5092,7 +5417,20 @@ function computeWeightedGrade(callback){
       if(W.final>0){ comps.push(['Final', finScore!==null?finScore:0, W.final, finScore===null]); }
       var wsum=comps.reduce(function(s,x){return s+x[2];},0);
       var total=wsum>0?comps.reduce(function(s,x){return s+x[1]*x[2];},0)/wsum:0;
-      callback({ course:course, comps:comps, total:total });
+      // work due so far, anything not done counted as 0 -- the letter basis
+      var _dp=[
+        { key:'Reading', w:W.reading, n:_dueRead.length, earned:_dRead },
+        { key:'Quizzes', w:W.quizzes, n:_dueQuiz.length, earned:_dQuiz },
+        { key:'Arenas',  w:W.arenas,  n:_dueAr.length,   earned:_dArena }
+      ];
+      if(midScore!==null || (midterm && dueBefore(midterm.closes_at, _now))){
+        _dp.push({ key:'Midterm', w:W.midterm, n:1, earned:(midScore===null?0:midScore) });
+      }
+      if(finScore!==null || (fin && dueBefore(fin.closes_at, _now))){
+        _dp.push({ key:'Final exam', w:W.final, n:1, earned:(finScore===null?0:finScore) });
+      }
+      var dueTotal=dueWeightedPct(_dp);
+      callback({ course:course, comps:comps, total:total, dueTotal:dueTotal, dueParts:_dp });
     }
     if (examIds.length===0){ finish(null,null); return; }
     sb.from('it_attempts').select('exam_id,item_id,points_earned,created_at').eq('student_id',uid).in('exam_id',examIds).not('graded_at','is',null).then(function(ea){
@@ -5131,6 +5469,9 @@ function loadMyGradesDetail(host, summary){
 function gradeSummaryCard(summary){
   if(!summary){ return ''; }
   var pct = Math.round(summary.total*100);
+  var _gsc = effectiveGradeScale(summary.course);
+  var _pb = (summary.dueTotal!==null && summary.dueTotal!==undefined) ? summary.dueTotal : null;
+  var _letter = (_pb===null) ? '\u2014' : letterForPct(_pb*100, _gsc);
   var rows='';
   summary.comps.forEach(function(c){
     var notTaken = c[3]===true;
@@ -5141,6 +5482,7 @@ function gradeSummaryCard(summary){
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
   h+='<h3 style="font-size:15px;margin:0;">Your grade so far</h3>';
   h+='<span class="mono" style="font-size:22px;color:var(--text-bright);font-weight:600;">'+pct+'%</span></div>';
+  h+='<div style="font-size:12.5px;color:var(--text-muted);margin:-2px 0 10px;">Letter grade: <b>'+esc(_letter)+'</b>'+(_pb!==null?(' \u2014 your score on everything due so far ('+Math.round(_pb*100)+'%). Work you did not do by its deadline counts as 0; work not yet due is not counted at all. The '+pct+'% above is different \u2014 it projects the whole course, so work not yet due counts as 0 there too.'):' \u2014 appears once something is due')+'</div>';
   h+='<table class="data-table"><caption class="sr-only">Weighted grade components</caption><thead><tr><th scope="col">Component</th><th scope="col">Score</th><th scope="col">Weight</th></tr></thead><tbody>'+rows+'</tbody></table>';
   h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading and quizzes update as you complete them. Arenas are scored on performance: your best arena results (up to the number your instructor requires) are averaged, and arenas you have not played count as 0 toward that requirement. Exams you have not taken count as 0 until taken. This matches how your instructor\u2019s gradebook weights each part.</div>';
   h+='</div>';
