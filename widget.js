@@ -1,0 +1,117 @@
+// widget.js - a text-first AI Instructor panel for an existing course page. One <script type="module"> line adds it; removing that line removes it.
+// It needs the page's Supabase client (global `sb`) and course state (global `State.user`, `State.currentCourseId`), and does nothing otherwise.
+// It shows only for the course ids listed in CONFIG.courseIds. No API key is ever in the browser: the student's own Supabase session token is sent
+// to the it-ai-instructor Edge Function, which holds the instructor's key. Model text is inserted with textContent only, never as HTML.
+import { AiInstructorBackend, BackendError } from './backend-client.js';
+import { mountVisual } from './graph-render.js';
+
+const CONFIG = Object.assign({
+  courseIds: ['2d6832cf-28bf-4b5a-a351-56f3a1aa2252'],      // ECON 436 (Fall 2026)
+  functionUrl: 'https://rtaiivegcqqmdchpguzn.supabase.co/functions/v1/it-ai-instructor',
+  katexBase: new URL('./vendor/katex/', import.meta.url).href,
+  checkEveryMs: 1500,
+}, (typeof window !== 'undefined' && window.AI_INSTRUCTOR_WIDGET) || {});
+
+const CSS = `
+.aiw-btn{position:fixed;right:16px;bottom:16px;z-index:99990;border:0;border-radius:999px;padding:12px 18px;font:600 15px/1 system-ui,sans-serif;background:#1f5fbf;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);cursor:pointer}
+.aiw-btn:focus-visible,.aiw-panel button:focus-visible,.aiw-panel textarea:focus-visible,.aiw-panel select:focus-visible{outline:3px solid #ffbf47;outline-offset:2px}
+.aiw-panel{position:fixed;right:16px;bottom:16px;z-index:99991;width:min(420px,calc(100vw - 32px));height:min(640px,calc(100vh - 32px));display:flex;flex-direction:column;background:#fff;color:#1b2430;border:1px solid #c9d1dc;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.4);font:15px/1.45 system-ui,sans-serif}
+.aiw-panel[hidden],.aiw-btn[hidden]{display:none}
+@media (prefers-color-scheme:dark){.aiw-panel{background:#1b222b;color:#e6e9ee;border-color:#2e3744}.aiw-in,.aiw-sel{background:#12161c!important;color:#e6e9ee!important;border-color:#2e3744!important}.aiw-a{background:#252e3a!important}.aiw-note{color:#aab3c0!important}}
+.aiw-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #c9d1dc33}
+.aiw-head h2{margin:0;font:700 16px/1.2 system-ui,sans-serif;flex:1}
+.aiw-head button{border:1px solid #8a94a355;background:transparent;color:inherit;border-radius:6px;padding:4px 8px;cursor:pointer;font:13px system-ui,sans-serif}
+.aiw-note{font-size:12.5px;color:#4a5565;padding:6px 12px;border-bottom:1px solid #c9d1dc33}
+.aiw-msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.aiw-m{max-width:92%;padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-wrap:break-word}
+.aiw-u{align-self:flex-end;background:#1f5fbf;color:#fff}.aiw-a{align-self:flex-start;background:#eef1f5}
+.aiw-err{align-self:stretch;background:#fde8e6;color:#8a1c14;font-size:14px}
+.ai-visual{margin:8px 0 0;overflow:auto;background:#fff;color:#1b2430;border-radius:8px;padding:6px}.ai-visual svg{max-width:100%;height:auto}
+.aiw-row{display:flex;gap:8px;padding:8px 12px;border-top:1px solid #c9d1dc33;align-items:flex-end}
+.aiw-in{flex:1;resize:none;font:inherit;padding:8px;border:1px solid #c9d1dc;border-radius:8px;background:#fff;color:inherit;min-height:42px;max-height:120px}
+.aiw-send{border:0;border-radius:8px;padding:10px 14px;background:#1f5fbf;color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer}.aiw-send[disabled]{opacity:.5;cursor:default}
+.aiw-sel{margin:6px 12px 0;padding:6px;border:1px solid #c9d1dc;border-radius:6px;font:14px system-ui,sans-serif;background:#fff;color:inherit}
+@media (prefers-reduced-motion:no-preference){.aiw-panel{transition:opacity .15s}}
+`;
+
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+let katexPromise = null;
+function loadKatex() {
+  if (window.katex) return Promise.resolve(window.katex);
+  if (katexPromise) return katexPromise;
+  katexPromise = new Promise((res) => {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = CONFIG.katexBase + 'katex.min.css'; document.head.appendChild(l);
+    const s = document.createElement('script'); s.src = CONFIG.katexBase + 'katex.min.js'; s.onload = () => res(window.katex || null); s.onerror = () => res(null); document.head.appendChild(s);
+  });
+  return katexPromise;
+}
+
+function init() {
+  const st = () => (typeof window.State !== 'undefined' ? window.State : null);
+  const ready = () => { const s = st(); return !!(window.sb && s && s.user && s.currentCourseId && CONFIG.courseIds.indexOf(s.currentCourseId) >= 0); };
+  const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
+
+  const btn = el('button', 'aiw-btn', 'Ask AI Instructor'); btn.type = 'button'; btn.hidden = true; btn.setAttribute('aria-haspopup', 'dialog');
+  const panel = el('section', 'aiw-panel'); panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'AI Instructor');
+  const head = el('div', 'aiw-head'); head.appendChild(el('h2', null, 'AI Instructor'));
+  const endBtn = el('button', null, 'New chat'); endBtn.type = 'button'; endBtn.title = 'End this conversation and start a fresh one';
+  const closeBtn = el('button', null, 'Close'); closeBtn.type = 'button';
+  head.append(endBtn, closeBtn);
+  const note = el('div', 'aiw-note', 'AI-generated and can be wrong; check it against your textbook. Practice here is ungraded and never affects your grade.');
+  const mode = el('select', 'aiw-sel'); mode.setAttribute('aria-label', 'Teaching mode'); mode.appendChild(Object.assign(el('option', null, 'Ask anything'), { value: '' }));
+  const msgs = el('div', 'aiw-msgs'); msgs.setAttribute('role', 'log'); msgs.setAttribute('aria-live', 'polite'); msgs.tabIndex = 0;
+  const row = el('div', 'aiw-row'); const input = el('textarea', 'aiw-in'); input.rows = 1; input.maxLength = 2000; input.setAttribute('aria-label', 'Your question'); input.placeholder = 'Type your question';
+  const send = el('button', 'aiw-send', 'Send'); send.type = 'button'; row.append(input, send);
+  panel.append(head, note, mode, msgs, row); document.body.append(btn, panel);
+
+  let backend = null, courseId = null, busy = false, abort = null, katexReady = false;
+  const say = (cls, text) => { const m = el('div', 'aiw-m ' + cls, text); msgs.appendChild(m); msgs.scrollTop = msgs.scrollHeight; return m; };
+  const makeBackend = () => {
+    courseId = st().currentCourseId;
+    backend = new AiInstructorBackend({
+      url: CONFIG.functionUrl, courseId,
+      getToken: async () => { const r = await window.sb.auth.getSession(); const t = r && r.data && r.data.session && r.data.session.access_token; if (!t) throw new BackendError({ error: 'unauthenticated', message: 'Please sign in again.', retryable: false }); return t; },
+      context: () => ({}),
+      onSession: (j) => {
+        const days = j.retention_days;
+        note.textContent = 'AI-generated and can be wrong; check it against your textbook. Practice here is ungraded and never affects your grade. ' + (days > 0 ? 'Conversations are kept ' + days + ' days for your instructor to review.' : 'Your conversation is deleted when you end the session.');
+        while (mode.options.length > 1) mode.remove(1);
+        (j.teaching_modes || []).filter((m) => m.enabled).forEach((m) => mode.appendChild(Object.assign(el('option', null, m.label), { value: m.id })));
+      },
+      onVisual: (spec) => { const host = current; if (host) loadKatex().then((k) => { katexReady = true; mountVisual(spec, host, k); }); },   // host captured now: KaTeX may finish loading after the turn ends
+    });
+  };
+  let current = null;   // the assistant bubble currently receiving text (visuals attach under it)
+
+  async function ask() {
+    const text = input.value.trim(); if (!text || busy) return;
+    if (!ready()) { say('aiw-err', 'Please sign in to the course first.'); return; }
+    if (!backend || courseId !== st().currentCourseId) makeBackend();
+    input.value = ''; busy = true; send.disabled = true; abort = new AbortController();
+    say('aiw-u', text); const bubble = say('aiw-a', ''); current = bubble;
+    const stop = el('button', null, 'Stop'); stop.type = 'button'; stop.style.cssText = 'margin-left:8px;font-size:12px'; head.insertBefore(stop, endBtn); stop.onclick = () => abort.abort();
+    try {
+      for await (const chunk of backend.respond({ text, inputMode: 'text', mode: mode.value || undefined, signal: abort.signal })) { bubble.insertBefore(document.createTextNode(chunk), bubble.querySelector('.ai-visual')); msgs.scrollTop = msgs.scrollHeight; }
+      if (!bubble.textContent.trim() && !bubble.querySelector('.ai-visual')) bubble.remove();
+    } catch (e) {
+      if (!bubble.textContent.trim()) bubble.remove();
+      say('aiw-err', e instanceof BackendError ? e.message : 'Could not reach the instructor service. Please try again.');
+    } finally { stop.remove(); busy = false; send.disabled = false; current = null; input.focus(); }
+  }
+  function close() { panel.hidden = true; btn.hidden = !ready(); btn.focus(); }
+  btn.onclick = () => { panel.hidden = false; btn.hidden = true; input.focus(); };
+  closeBtn.onclick = close;
+  send.onclick = ask;
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); } });
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  endBtn.onclick = async () => { if (abort && busy) abort.abort(); if (backend) { try { await backend.endSession(); } catch (_) { /* ignore */ } } backend = null; msgs.textContent = ''; };
+
+  setInterval(() => {   // follow the page: show only inside an eligible course while signed in; tidy up on sign-out or course change
+    const ok = ready();
+    if (!ok) { if (!panel.hidden || backend) { panel.hidden = true; if (abort && busy) abort.abort(); backend = null; msgs.textContent = ''; } btn.hidden = true; return; }
+    if (backend && courseId !== st().currentCourseId) { backend = null; msgs.textContent = ''; }
+    btn.hidden = !panel.hidden;
+  }, CONFIG.checkEveryMs);
+  void katexReady;
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
