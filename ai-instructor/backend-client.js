@@ -58,6 +58,8 @@ export class AiInstructorBackend {
     if (!r.ok) throw new BackendError(j && j.error ? j : { error: 'internal', message: 'Request failed (' + r.status + ').', retryable: r.status >= 500 });
     return j;
   }
+  /** One non-streaming action (for example review_status). Throws BackendError with the server's message. */
+  async call(body, signal) { return this._json(body, signal); }
   async startSession() {
     if (this.sessionId) return this.sessionId;
     var j = await this._json({ action: 'start_session', course_id: this.courseId, context: this.context ? this.context() : undefined });

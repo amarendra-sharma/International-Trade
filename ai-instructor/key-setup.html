@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Instructor setup</title>
+<style>
+  :root{--bg:#f6f7f9;--fg:#1b2430;--card:#fff;--line:#d7dce3;--accent:#1f5fbf;--bad:#b3261e;--ok:#18794e}
+  @media (prefers-color-scheme:dark){:root{--bg:#12161c;--fg:#e6e9ee;--card:#1b222b;--line:#2e3744;--accent:#6aa5ff;--bad:#ff8a80;--ok:#5fd39b}}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+  main{max-width:640px;margin:0 auto;padding:16px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0}
+  label{display:block;margin:10px 0 4px;font-weight:600}
+  input,select,button{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%;box-sizing:border-box}
+  button{width:auto;background:var(--accent);color:#fff;border:0;cursor:pointer;margin:12px 8px 0 0}button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+  .msg{margin-top:10px;min-height:1.4em}.bad{color:var(--bad)}.ok{color:var(--ok)}small{opacity:.8}
+</style></head><body><main>
+<h1>AI Instructor setup</h1>
+<p><small>Your API key is sent once over HTTPS to your own Supabase function, encrypted there, and never shown again. It is not saved in this browser.</small></p>
+<section id="auth"><h2>Sign in</h2>
+  <label for="em">Email</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+  <button id="login">Sign in</button><div class="msg" id="authmsg" role="status"></div></section>
+<section id="keysec" hidden><h2>AI provider and key</h2>
+  <div id="status" class="msg" role="status"></div>
+  <label for="prov">Provider</label><select id="prov"></select>
+  <div id="pnote" class="msg"><small></small></div>
+  <label for="key">API key</label><input id="key" type="password" autocomplete="off" spellcheck="false">
+  <label for="model">Model</label><select id="model"></select><input id="mtext" placeholder="model name, e.g. gemini-2.5-flash" spellcheck="false" hidden>
+  <div id="pricebox" hidden>
+    <label for="pin">Price per million INPUT tokens (USD, from your provider's pricing page)</label><input id="pin" type="number" min="0" step="0.01">
+    <label for="pout">Price per million OUTPUT tokens (USD)</label><input id="pout" type="number" min="0" step="0.01">
+    <small>Used only to estimate this course's spending against its monthly cap. Left blank, a high placeholder price is used so the cap stops early.</small></div>
+  <div id="custombox" hidden><label for="burl">Service address (must be on the platform's approved list)</label><input id="burl" placeholder="https://..." spellcheck="false"></div>
+  <button id="save">Check and save key</button><button id="del" class="sec">Remove key</button><div class="msg" id="keymsg" role="status"></div></section>
+<section id="coursesec" hidden><h2>Course settings</h2>
+  <label for="cid">Course ID</label><input id="cid" placeholder="course uuid" spellcheck="false"><button id="load" class="sec">Load</button>
+  <div id="settings" hidden>
+    <label><input id="en" type="checkbox" style="width:auto"> AI instructor enabled for this course</label>
+    <label for="ret">Keep conversations for (days; 0 = delete when the session ends)</label><input id="ret" type="number" min="0" max="365">
+    <label for="tok">Daily token limit per student</label><input id="tok" type="number" min="1000" max="1000000">
+    <label for="usd">Monthly spending cap for this course (USD)</label><input id="usd" type="number" min="0" step="0.5">
+    <div id="rvblock" hidden>
+    <h3>Reviewing graded work with the AI</h3>
+    <small>Off by default. When on, a student who agrees (a button in the chat window, never the AI) lets the AI instructor open their own exams, chapter quizzes, arenas and assignments, but only after the item has closed for the whole class, including any extensions. Items with no deadline set are never opened. Students who do not agree can ask the TA or you for a meeting.</small>
+    <label><input id="rven" type="checkbox" style="width:auto"> Let students review their own closed graded work with the AI instructor</label>
+    <label><input id="rvsol" type="checkbox" style="width:auto"> Let the AI also see the correct answers and explanations (only when the AI policy is "full")</label></div>
+    <button id="ssave">Save settings</button></div><div class="msg" id="smsg" role="status"></div>
+  <div id="reqsec" hidden><h3>Meeting requests from students</h3><div id="reqlist"></div><div class="msg" id="reqmsg" role="status"></div></div></section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+  var C=window.AI_INSTRUCTOR_CONFIG,$=function(i){return document.getElementById(i)};
+  if(!C){document.body.textContent='Missing config.js (copy config.example.js).';return}
+  var sb=supabase.createClient(C.supabaseUrl,C.supabaseAnonKey);
+  var CLAUDE=['claude-haiku-5-5','claude-sonnet-5-5','claude-opus-5-5','claude-haiku-4-5-20251001'];
+  var PROVS={
+    anthropic:{label:'Claude (Anthropic)',ph:'sk-ant-...',note:'Default. Conversations go to Anthropic.'},
+    gemini:{label:'Google Gemini',ph:'AIza...',note:'Student questions are sent to Google. Use a key from a paid/Cloud billing project: free-tier Gemini use may be used by Google to improve its products. Check Google\u2019s current terms before enrolling students.'},
+    openai:{label:'OpenAI',ph:'sk-...',note:'Student questions are sent to OpenAI under your API terms.'},
+    groq:{label:'Groq',ph:'gsk_...',note:'Student questions are sent to Groq under your API terms.'},
+    openrouter:{label:'OpenRouter',ph:'sk-or-...',note:'Student questions pass through OpenRouter to whichever model you name; check that model\u2019s data policy.'},
+    custom:{label:'Other OpenAI-compatible service',ph:'API key',note:'Only addresses your platform administrator has approved will work.'}
+  };
+  Object.keys(PROVS).forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=PROVS[k].label;$('prov').appendChild(o)});
+  CLAUDE.forEach(function(m){var o=document.createElement('option');o.value=o.textContent=m;$('model').appendChild(o)});
+  function provUI(){var p=$('prov').value,a=p==='anthropic';
+    $('key').placeholder=PROVS[p].ph; $('pnote').firstChild.textContent=PROVS[p].note+(a?'':' This tutor was tuned and tested with Claude; other models can behave differently, so try it yourself first. A different provider replaces the key on file.');
+    $('model').hidden=!a; $('mtext').hidden=a; $('pricebox').hidden=a; $('custombox').hidden=p!=='custom'}
+  $('prov').onchange=provUI; provUI();
+  function say(id,t,cls){var e=$(id);e.textContent=t;e.className='msg '+(cls||'')}
+  async function call(body){
+    var s=(await sb.auth.getSession()).data.session; if(!s) throw new Error('Please sign in.');
+    var r=await fetch(C.functionUrl,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+s.access_token},body:JSON.stringify(body)});
+    var j=await r.json().catch(function(){return{}}); if(!r.ok) throw new Error(j.message||('Request failed ('+r.status+')')); return j;
+  }
+  async function refresh(){
+    try{var j=await call({action:'key_status'});
+      say('status',j.has_key?('Key on file ending in '+j.last4+' ('+(PROVS[j.provider]||{label:j.provider}).label+', model '+j.model+').'):'No key saved yet.',j.has_key?'ok':'');
+      if(j.provider&&PROVS[j.provider]){$('prov').value=j.provider;provUI()}
+      if(j.model){ if(j.provider==='anthropic')$('model').value=j.model; else $('mtext').value=j.model }
+    }catch(e){say('status',e.message,'bad')}
+  }
+  $('login').onclick=async function(){
+    say('authmsg','Signing in...');
+    var r=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value}); $('pw').value='';
+    if(r.error) return say('authmsg',r.error.message,'bad');
+    say('authmsg','Signed in.','ok'); $('keysec').hidden=false; $('coursesec').hidden=false; refresh();
+  };
+  $('save').onclick=async function(){
+    var k=$('key').value.trim(),p=$('prov').value,a=p==='anthropic'; say('keymsg','Checking the key with '+PROVS[p].label+'...');
+    var body={action:'set_key',api_key:k,provider:p,model:a?$('model').value:$('mtext').value.trim(),validate:true};
+    if(!a){ if($('pin').value!=='')body.price_in=+$('pin').value; if($('pout').value!=='')body.price_out=+$('pout').value; if(p==='custom')body.base_url=$('burl').value.trim() }
+    try{await call(body); $('key').value=''; say('keymsg','Key saved.','ok'); refresh()}
+    catch(e){say('keymsg',e.message,'bad')} finally{ if(!$('keymsg').classList.contains('ok')) {} }
+    $('key').value='';
+  };
+  $('del').onclick=async function(){ try{await call({action:'delete_key'}); say('keymsg','Key removed.','ok'); refresh()}catch(e){say('keymsg',e.message,'bad')} };
+  $('load').onclick=async function(){
+    try{var j=await call({action:'get_settings',course_id:$('cid').value.trim()}), s=j.settings||j;
+      $('en').checked=!!s.enabled;$('ret').value=s.retention_days;$('tok').value=s.student_daily_tokens;$('usd').value=s.course_monthly_usd;
+      var rv=('review_enabled' in s);$('rvblock').hidden=!rv;$('rven').checked=!!s.review_enabled;$('rvsol').checked=s.review_show_solutions!==false;
+      $('settings').hidden=false;say('smsg','');$('reqsec').hidden=true;if(rv)loadReqs()}catch(e){say('smsg',e.message,'bad')}
+  };
+  async function loadReqs(){
+    var box=$('reqlist'); box.textContent=''; $('reqsec').hidden=false;
+    try{var j=await call({action:'list_review_requests',course_id:$('cid').value.trim()}), rs=j.requests||[];
+      if(!rs.length){box.textContent='No requests.';return}
+      rs.forEach(function(r){
+        var row=document.createElement('p'); row.textContent=(r.status==='open'?'OPEN \u2013 ':'Done \u2013 ')+r.student+' would like to meet '+(r.with==='ta'?'the TA':'the professor')+': '+r.topic+(r.note?' ('+r.note+')':'')+' \u2013 '+new Date(r.created_at).toLocaleString()+' ';
+        if(r.status==='open'){var b=document.createElement('button');b.className='sec';b.type='button';b.textContent='Mark done';b.onclick=async function(){b.disabled=true;try{await call({action:'complete_review_request',course_id:$('cid').value.trim(),request_id:r.id});loadReqs()}catch(e){say('reqmsg',e.message,'bad');b.disabled=false}};row.appendChild(b)}
+        box.appendChild(row)});
+    }catch(e){box.textContent='';say('reqmsg',e.message,'bad')}
+  }
+
+  $('ssave').onclick=async function(){
+    try{var b={action:'set_settings',course_id:$('cid').value.trim(),enabled:$('en').checked,retention_days:+$('ret').value,student_daily_tokens:+$('tok').value,course_monthly_usd:+$('usd').value};
+    if(!$('rvblock').hidden){b.review_enabled=$('rven').checked;b.review_show_solutions=$('rvsol').checked}
+    await call(b);say('smsg','Saved.','ok')}
+    catch(e){say('smsg',e.message,'bad')}
+  };
+})();
+</script></body></html>
