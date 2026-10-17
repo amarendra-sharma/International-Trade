@@ -1,6 +1,7 @@
 // widget.js - a text-first AI Instructor panel for an existing course page. One <script type="module"> line adds it; removing that line removes it.
 // It needs the page's Supabase client (global `sb`) and course state (global `State.user`, `State.currentCourseId`), and does nothing otherwise.
-// It shows only for the course ids listed in CONFIG.courseIds. No API key is ever in the browser: the student's own Supabase session token is sent
+// It shows only for the course ids listed in CONFIG.courseIds. Which course the page is on: staff (instructor/admin/TA) use State.teachCourseId; students use State.payCourseId
+// (the professor course they joined); State.currentCourseId is checked last for pages that set it. No API key is ever in the browser: the student's own Supabase session token is sent
 // to the it-ai-instructor Edge Function, which holds the instructor's key. Model text is inserted with textContent only, never as HTML.
 import { AiInstructorBackend, BackendError } from './backend-client.js';
 import { mountVisual } from './graph-render.js';
@@ -48,7 +49,12 @@ function loadKatex() {
 
 function init() {
   const st = () => (typeof window.State !== 'undefined' ? window.State : null);
-  const ready = () => { const s = st(); return !!(window.sb && s && s.user && s.currentCourseId && CONFIG.courseIds.indexOf(s.currentCourseId) >= 0); };
+  const activeCourse = () => {
+    const s = st(); if (!s || !s.user) return null;
+    const staff = s.role === 'instructor' || s.role === 'admin' || !!s.isTA;
+    return (staff ? [s.teachCourseId, s.payCourseId, s.currentCourseId] : [s.payCourseId, s.currentCourseId]).find((id) => id && CONFIG.courseIds.indexOf(id) >= 0) || null;
+  };
+  const ready = () => !!(window.sb && activeCourse());
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
 
   const btn = el('button', 'aiw-btn', 'Ask AI Instructor'); btn.type = 'button'; btn.hidden = true; btn.setAttribute('aria-haspopup', 'dialog');
@@ -67,7 +73,7 @@ function init() {
   let backend = null, courseId = null, busy = false, abort = null, katexReady = false;
   const say = (cls, text) => { const m = el('div', 'aiw-m ' + cls, text); msgs.appendChild(m); msgs.scrollTop = msgs.scrollHeight; return m; };
   const makeBackend = () => {
-    courseId = st().currentCourseId;
+    courseId = activeCourse();
     backend = new AiInstructorBackend({
       url: CONFIG.functionUrl, courseId,
       getToken: async () => { const r = await window.sb.auth.getSession(); const t = r && r.data && r.data.session && r.data.session.access_token; if (!t) throw new BackendError({ error: 'unauthenticated', message: 'Please sign in again.', retryable: false }); return t; },
@@ -86,7 +92,7 @@ function init() {
   async function ask() {
     const text = input.value.trim(); if (!text || busy) return;
     if (!ready()) { say('aiw-err', 'Please sign in to the course first.'); return; }
-    if (!backend || courseId !== st().currentCourseId) makeBackend();
+    if (!backend || courseId !== activeCourse()) makeBackend();
     input.value = ''; busy = true; send.disabled = true; abort = new AbortController();
     say('aiw-u', text); const bubble = say('aiw-a', ''); current = bubble;
     const stop = el('button', null, 'Stop'); stop.type = 'button'; stop.style.cssText = 'margin-left:8px;font-size:12px'; head.insertBefore(stop, endBtn); stop.onclick = () => abort.abort();
@@ -109,7 +115,7 @@ function init() {
   setInterval(() => {   // follow the page: show only inside an eligible course while signed in; tidy up on sign-out or course change
     const ok = ready();
     if (!ok) { if (!panel.hidden || backend) { panel.hidden = true; if (abort && busy) abort.abort(); backend = null; msgs.textContent = ''; } btn.hidden = true; return; }
-    if (backend && courseId !== st().currentCourseId) { backend = null; msgs.textContent = ''; }
+    if (backend && courseId !== activeCourse()) { backend = null; msgs.textContent = ''; }
     btn.hidden = !panel.hidden;
   }, CONFIG.checkEveryMs);
   void katexReady;
