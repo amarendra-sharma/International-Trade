@@ -13,6 +13,9 @@ const CONFIG = Object.assign({
   functionUrl: 'https://rtaiivegcqqmdchpguzn.supabase.co/functions/v1/it-ai-instructor',
   katexBase: new URL('./vendor/katex/', import.meta.url).href,
   checkEveryMs: 1500,
+  // Talk mode (animated instructor + voice) is opt-in per course; the text chat is unaffected for every other course.
+  talkCourseIds: ['c13c165d-4ae6-4359-82a8-bac7e8323be0'],      // Test Course 2026 only, for now
+  talkBase: new URL('./talk/', import.meta.url).href,
 }, (typeof window !== 'undefined' && window.AI_INSTRUCTOR_WIDGET) || {});
 
 const CSS = `
@@ -75,7 +78,8 @@ function init() {
   const endBtn = el('button', null, 'New chat'); endBtn.type = 'button'; endBtn.title = 'End this conversation and start a fresh one';
   const closeBtn = el('button', null, 'Close'); closeBtn.type = 'button';
   const reviewBtn = el('button', null, 'Graded-work review'); reviewBtn.type = 'button'; reviewBtn.hidden = true; reviewBtn.title = 'Allow or stop the AI instructor from reviewing your own closed graded work, or ask for a meeting';
-  head.append(reviewBtn, endBtn, closeBtn);
+  const talkBtn = el('button', null, 'Talk'); talkBtn.type = 'button'; talkBtn.hidden = true; talkBtn.title = 'Speak with the animated AI instructor (voice)';
+  head.append(talkBtn, reviewBtn, endBtn, closeBtn);
   const note = el('div', 'aiw-note', 'AI-generated and can be wrong; check it against your textbook. Practice here is ungraded and never affects your grade.');
   const mode = el('select', 'aiw-sel'); mode.setAttribute('aria-label', 'Teaching mode'); mode.appendChild(Object.assign(el('option', null, 'Ask anything'), { value: '' }));
   const msgs = el('div', 'aiw-msgs'); msgs.setAttribute('role', 'log'); msgs.setAttribute('aria-live', 'polite'); msgs.tabIndex = 0;
@@ -118,6 +122,24 @@ function init() {
       say('aiw-err', e instanceof BackendError ? e.message : 'Could not reach the instructor service. Please try again.');
     } finally { stop.remove(); busy = false; send.disabled = false; current = null; input.focus(); }
   }
+  // ---- Talk mode (animated instructor + voice), loaded only when the student presses Talk --------------------------------------------------------
+  let talk = null;
+  const talkAllowed = () => !!(courseId || activeCourse()) && CONFIG.talkCourseIds.indexOf(activeCourse()) >= 0 && !!(window.speechSynthesis || (navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+  talkBtn.addEventListener('click', async () => {
+    if (talk || !ready()) return;
+    ensureBackend(); talkBtn.disabled = true;
+    let bubble = null;
+    const hooks = {
+      studentSaid: (text) => { say('aiw-u', text); bubble = say('aiw-a', ''); current = bubble; },
+      assistantDelta: (d) => { if (bubble) { bubble.insertBefore(document.createTextNode(d), bubble.querySelector('.ai-visual')); msgs.scrollTop = msgs.scrollHeight; } },
+      turnDone: () => { if (bubble && !bubble.textContent.trim() && !bubble.querySelector('.ai-visual')) bubble.remove(); bubble = null; current = null; },
+    };
+    try {
+      const m = await import('./talk/talk.js');
+      talk = m.openTalk({ backend, getMode: () => mode.value || undefined, baseUrl: CONFIG.talkBase, hooks, onClose: () => { talk = null; current = null; talkBtn.focus(); } });
+    } catch (e) { say('aiw-err', 'Talk mode could not start on this device. You can keep using the text chat.'); }
+    finally { talkBtn.disabled = false; }
+  });
   // ---- graded-work review screen -------------------------------------------------------------------------------------------------------------------
   let reviewStatus = null, reviewCourse = null;
   const ensureBackend = () => { if (!backend || courseId !== activeCourse()) makeBackend(); return backend; };
@@ -188,8 +210,9 @@ function init() {
 
   setInterval(() => {   // follow the page: show only inside an eligible course while signed in; tidy up on sign-out or course change
     const ok = ready();
-    if (!ok) { if (!panel.hidden || backend) { panel.hidden = true; if (abort && busy) abort.abort(); backend = null; msgs.textContent = ''; closeReview(); } reviewStatus = null; reviewBtn.hidden = true; btn.hidden = true; return; }
-    if (backend && courseId !== activeCourse()) { backend = null; msgs.textContent = ''; reviewStatus = null; reviewBtn.hidden = true; closeReview(); }
+    if (!ok) { if (!panel.hidden || backend) { panel.hidden = true; if (abort && busy) abort.abort(); backend = null; msgs.textContent = ''; closeReview(); } reviewStatus = null; reviewBtn.hidden = true; talkBtn.hidden = true; if (talk) talk.close(); btn.hidden = true; return; }
+    if (backend && courseId !== activeCourse()) { backend = null; msgs.textContent = ''; reviewStatus = null; reviewBtn.hidden = true; closeReview(); if (talk) talk.close(); }
+    talkBtn.hidden = !talkAllowed();
     btn.hidden = !panel.hidden;
   }, CONFIG.checkEveryMs);
   void katexReady;
