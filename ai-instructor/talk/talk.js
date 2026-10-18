@@ -49,6 +49,7 @@ export function openTalk(o) {
     modelUrl: o.dev ? new URL(o.modelFile || 'assets/instructor.glb', base).pathname : new URL(o.modelFile || 'assets/instructor.glb', base).href,
     approvedOrigins: [base], allowRelativeDev: !!o.dev,
     audio: audio,
+    lipsync: { jawMax: 0.4 },        // this model's jaw shape looks stretched past ~40%
     threeDepsUrl: new URL('three-deps.bundle.js', base).href,
     privacyNote: o.privacyNote || 'AI-generated and can be wrong. Your voice is turned into text on your own device and the audio is discarded. The text of your questions is handled exactly like the typed chat.',
     onUserText: function (t) { getVoice().then(function (v) { v.submitText(t); }, fail); },
