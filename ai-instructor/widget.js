@@ -9,7 +9,7 @@ import { AiInstructorBackend, BackendError } from './backend-client.js';
 import { mountVisual } from './graph-render.js';
 
 const CONFIG = Object.assign({
-  courseIds: ['2d6832cf-28bf-4b5a-a351-56f3a1aa2252'],      // ECON 436 (Fall 2026)
+  courseIds: ['2d6832cf-28bf-4b5a-a351-56f3a1aa2252', 'c13c165d-4ae6-4359-82a8-bac7e8323be0'],      // ECON 436 (Fall 2026), Test Course 2026
   functionUrl: 'https://rtaiivegcqqmdchpguzn.supabase.co/functions/v1/it-ai-instructor',
   katexBase: new URL('./vendor/katex/', import.meta.url).href,
   checkEveryMs: 1500,
