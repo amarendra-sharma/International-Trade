@@ -30,6 +30,44 @@ export function pickVoice(voices, preferredUri) {
   return voices.slice().sort(function (a, b) { return score(b) - score(a); })[0];
 }
 
+
+// ---- Mouth plan: a rough word/syllable timeline built from the sentence text ---------------------------------------------------------
+// The browser gives no audio, so the mouth follows an estimated timeline (about 13 letters per second at rate 1) that is re-aligned to the real
+// speech every time the voice reports a word boundary. The mouth closes between words and at punctuation, and each syllable opens by its vowel.
+var VOWEL_OPEN = { a: 0.55, o: 0.5, u: 0.3, e: 0.4, i: 0.3, y: 0.3 };
+var VOWEL_BRIGHT = { a: 0.5, o: 0.2, u: 0.15, e: 0.8, i: 0.9, y: 0.8 };
+function syllableVowels(w) {
+  var lw = w.toLowerCase(), g = lw.match(/[aeiouy]+/g) || [];
+  if (g.length > 1 && /[^aeiouy]e$/.test(lw) && !/le$/.test(lw)) g.pop();          // silent final e
+  if (!g.length) return [/[0-9]/.test(lw) ? 'e' : 'a'];                             // numbers / acronyms: one open syllable
+  return g.map(function (x) { return x.charAt(0); });
+}
+export function planMouth(text, rate) {
+  var re = /\S+/g, m, t = 0, words = [], r = rate > 0 ? rate : 1;
+  while ((m = re.exec(String(text || ''))) !== null) {
+    var raw = m[0], letters = raw.replace(/[^A-Za-z0-9]/g, '');
+    if (!letters) { t += 0.15 / r; continue; }
+    var v = syllableVowels(letters), dur = Math.max(0.14, letters.length / 13 / r);
+    words.push({ from: m.index, to: m.index + raw.length, start: t, dur: dur, v: v });
+    t += dur + 0.05 / r + (/[.!?]["')\]]*$/.test(raw) ? 0.35 : /[,;:]["')\]]*$/.test(raw) ? 0.18 : 0);
+  }
+  return { words: words, total: t };
+}
+// Mouth openness (0..~0.55) and vowel "brightness" (0..1) at plan-time r seconds.
+export function mouthAt(plan, r) {
+  var ws = plan.words;
+  for (var i = 0; i < ws.length; i++) {
+    var w = ws[i];
+    if (r < w.start) return { level: 0, bright: 0.5 };
+    if (r > w.start + w.dur) continue;
+    var p = (r - w.start) / w.dur, n = w.v.length, pos = p * n, k = Math.min(n - 1, Math.floor(pos)), f = pos - k;
+    var bump = Math.pow(Math.sin(Math.PI * f), 0.8), edge = Math.min(1, p / 0.18, (1 - p) / 0.18);
+    var ch = w.v[k];
+    return { level: (VOWEL_OPEN[ch] || 0.4) * (0.3 + 0.7 * bump) * Math.max(0, edge), bright: VOWEL_BRIGHT[ch] || 0.5 };
+  }
+  return { level: 0, bright: 0.5 };
+}
+
 export function LocalVoiceAudio(opts) {
   opts = opts || {};
   this._synth = opts.synth || (typeof window !== 'undefined' ? window.speechSynthesis : null);
@@ -48,7 +86,7 @@ export function LocalVoiceAudio(opts) {
   this.analyser = {
     fftSize: 1024, frequencyBinCount: 512,
     getFloatTimeDomainData: function (buf) { var a = self._level() / 4 * Math.SQRT2; for (var i = 0; i < buf.length; i++) buf[i] = a * Math.sin(i * 0.3); },
-    getByteFrequencyData: function (buf) { for (var i = 0; i < buf.length; i++) buf[i] = 0; var c = Math.min(buf.length - 1, 64); buf[c] = self._active ? 200 : 0; },
+    getByteFrequencyData: function (buf) { for (var i = 0; i < buf.length; i++) buf[i] = 0; var c = Math.max(1, Math.min(buf.length - 1, Math.round((self._bright === undefined ? 0.5 : self._bright) * 128))); buf[c] = self._active ? 200 : 0; },
     disconnect: function () {}
   };
 }
@@ -60,13 +98,24 @@ LocalVoiceAudio.prototype._emit = function (name, arg) {
   var a = (this._subs[name] || []).slice();
   for (var i = 0; i < a.length; i++) { try { a[i](arg); } catch (e) { /* ignore subscriber errors */ } }
 };
-// Synthetic mouth level, 0..~1. Zero unless a sentence is actually being spoken.
+// Synthetic mouth level, 0..~0.55. Zero unless a sentence is actually being spoken, and zero between words.
 LocalVoiceAudio.prototype._level = function () {
-  if (!this._active) return 0;
-  var t = this._now(), dt = Math.max(0, Math.min(0.2, t - (this._lastT || t))); this._lastT = t;
-  this._pulse *= Math.exp(-dt / 0.14);
-  var syl = Math.abs(Math.sin(this._phase + t * 2 * Math.PI * 3.6)) * (0.6 + 0.4 * Math.abs(Math.sin(t * 7.3)));
-  return Math.min(0.8, 0.1 + 0.4 * syl + this._pulse);
+  if (!this._active || !this._cur) return 0;
+  var c = this._cur, r = this._now() - c.t0 - c.off;
+  if (!c.seen && c.plan.total > 0 && r > c.plan.total) r = r % c.plan.total;     // voice reports no boundaries: keep a plausible rhythm until it ends
+  var m = mouthAt(c.plan, r);
+  this._bright = m.bright;
+  return m.level;
+};
+// Start the mouth plan for the sentence that has just begun, and re-align it when the voice reports a word boundary.
+LocalVoiceAudio.prototype._startPlan = function (text) { this._cur = { plan: planMouth(text, this.rate), t0: this._now(), off: 0 }; };
+LocalVoiceAudio.prototype._realign = function (charIndex) {
+  var c = this._cur; if (!c || typeof charIndex !== 'number') return;
+  c.seen = true;
+  for (var i = 0; i < c.plan.words.length; i++) {
+    var w = c.plan.words[i];
+    if (charIndex >= w.from && charIndex < w.to) { c.off = (this._now() - c.t0) - w.start; return; }
+  }
 };
 LocalVoiceAudio.prototype.available = function () { return !!(this._synth && this._Utter && this.voice); };
 LocalVoiceAudio.prototype.voices = function () { return this._synth ? listLocalEnglishVoices(this._synth) : []; };
@@ -104,11 +153,11 @@ LocalVoiceAudio.prototype.playBuffer = function (token, turnId) {
   if (this._muted) return this._simulate(token.text, turnId);   // keep the avatar and timing consistent without sound
   u.onstart = function () {
     if (self._disposed || turnId !== self._turn) return;
-    self._active = true; self._lastT = self._now();
+    self._active = true; self._lastT = self._now(); self._startPlan(token.text);
     if (self._watch !== null) { self._clearTimeout(self._watch); self._watch = null; }
     if (!self._speaking) { self._speaking = true; self._turnStart = self._now(); self._emit('start', { turnId: turnId, at: self._turnStart }); }
   };
-  u.onboundary = function (e) { if (e && (e.name === 'word' || e.name === undefined)) self._pulse = Math.min(0.3, self._pulse + 0.2); };
+  u.onboundary = function (e) { if (e && (e.name === 'word' || e.name === undefined)) self._realign(e.charIndex); };
   var finish = function () {
     if (turnId !== self._turn) return;                     // a stop() already reset everything
     self._pending = Math.max(0, self._pending - 1); self._active = false;
@@ -128,7 +177,7 @@ LocalVoiceAudio.prototype._simulate = function (text, turnId) {
   var tokenTurn = turnId;
   this._setTimeout(function () {
     if (self._disposed || tokenTurn !== self._turn) return;
-    self._active = true; self._lastT = self._now(); self._pulse = 0.2;
+    self._active = true; self._lastT = self._now(); self._startPlan(text);
     if (!self._speaking) { self._speaking = true; self._turnStart = self._now(); self._emit('start', { turnId: tokenTurn, at: self._turnStart }); }
   }, Math.max(0, (start - now) * 1000));
   this._setTimeout(function () {
