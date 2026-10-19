@@ -62,6 +62,7 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
       learning_record_days: { type: "integer", minimum: 0, maximum: 730 }, store_mastery: { type: "boolean" },
       // graded-work review (migration 005): off by default; the correct answers are shown to the AI only when review_show_solutions is true and ai_policy is full
       review_enabled: { type: "boolean" }, review_show_solutions: { type: "boolean" },
+      payer: { type: "string", enum: ["instructor", "platform"] },
     },
   },
   // graded-work review (migration 005): status and consent for the student; meeting requests for the student; the request list for staff

@@ -11,6 +11,8 @@ export interface CourseSettings {
   aiPolicy: AiPolicy; allowWorkedSolutions: boolean; blockDuringAssessments: boolean; learningRecordDays: number; storeMastery: boolean;
   // graded-work review (migration 005). Off until the course owner turns it on; each student must also agree.
   reviewEnabled: boolean; reviewShowSolutions: boolean;
+  // who pays for the AI: the course owner's own key (default), or the platform's key (migration 006). Only a platform administrator can change it.
+  payer: "instructor" | "platform";
 }
 export interface CourseAccess {
   allowed: boolean; reason?: "not_found" | "not_enrolled" | "inactive" | "expired" | "payment_required";

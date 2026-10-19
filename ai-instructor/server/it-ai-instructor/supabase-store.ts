@@ -12,7 +12,7 @@ type Admin = any;   // the supabase-js client; typed loosely so tests can pass a
 export const DEFAULT_SETTINGS: CourseSettings = {
   enabled: false, retentionDays: RETENTION.defaultDays, studentDailyTokens: LIMITS.defaultStudentDailyTokens, courseMonthlyUsd: LIMITS.defaultCourseMonthlyUsd, model: MODELS.default,
   aiPolicy: "full", allowWorkedSolutions: true, blockDuringAssessments: true, learningRecordDays: 180, storeMastery: true,
-  reviewEnabled: false, reviewShowSolutions: true,
+  reviewEnabled: false, reviewShowSolutions: true, payer: "instructor",
 };
 const POLICIES = ["full", "hints_only", "concepts_only"];
 export function mapSettings(s: Record<string, any>): CourseSettings {
@@ -20,7 +20,7 @@ export function mapSettings(s: Record<string, any>): CourseSettings {
     enabled: !!s.enabled, retentionDays: s.retention_days, studentDailyTokens: s.student_daily_tokens, courseMonthlyUsd: Number(s.course_monthly_usd), model: s.model,
     aiPolicy: POLICIES.includes(s.ai_policy) ? s.ai_policy : "full", allowWorkedSolutions: s.allow_worked_solutions !== false, blockDuringAssessments: s.block_during_assessments !== false,
     learningRecordDays: typeof s.learning_record_days === "number" ? s.learning_record_days : 180, storeMastery: s.store_mastery !== false,
-    reviewEnabled: s.review_enabled === true, reviewShowSolutions: s.review_show_solutions !== false,
+    reviewEnabled: s.review_enabled === true, reviewShowSolutions: s.review_show_solutions !== false, payer: s.payer === "platform" ? "platform" : "instructor",
   };
 }
 const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
@@ -84,7 +84,7 @@ export class SupabaseStore implements Store {
   async setSettings(courseId: string, p: Partial<CourseSettings>): Promise<CourseSettings> {
     const cur = (await this.getCourseSettings(courseId));
     const next = { ...cur, ...p };
-    const { error } = await this.db.from("it_ai_settings").upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
+    const { error } = await this.db.from("it_ai_settings").upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
     if (error) throw new Error("db: settings save failed");
     return next;
   }

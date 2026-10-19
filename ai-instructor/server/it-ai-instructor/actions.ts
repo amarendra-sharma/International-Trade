@@ -3,7 +3,7 @@ import { LIMITS, MODELS, PROVIDERS, isProviderId, resolveBaseURL } from "./confi
 import { reviewSolutionsAllowed, toolDefinitionsForModel } from "./tools.ts";
 import { buildSystem } from "./prompt.ts";
 import { decryptKey, encryptKey, last4, looksLikeKeyFor } from "./vault.ts";
-import { errBody, type Caller, type Deps } from "./converse.ts";
+import { errBody, keyOwnerOf, type Caller, type Deps } from "./converse.ts";
 import { ProviderError } from "./provider.ts";
 import type { ErrorBody } from "./schemas.ts";
 import { DEFAULT_CONTROL, isMode } from "./resilience.ts";
@@ -26,7 +26,8 @@ export async function startSession(deps: Deps, c: Caller, courseId: string): Pro
   const a = await deps.store.getCourseAccess(c.userId, courseId, now);
   if (!a.allowed) return err(403, errBody("not_enrolled", "You do not have access to this course's AI instructor.", false));
   if (!a.settings.enabled && !a.isStaff) return err(403, errBody("course_disabled", "The AI instructor is not turned on for this course.", false));
-  if (!(await deps.store.getStoredKey(a.ownerId))) return err(409, errBody("no_instructor_key", "The AI instructor isn't set up yet. Please tell your instructor.", false));
+  const kOwner = keyOwnerOf(deps, a);
+  if (!kOwner || !(await deps.store.getStoredKey(kOwner))) return err(409, errBody("no_instructor_key", "The AI instructor isn't set up yet. Please tell your instructor.", false));
   // operator switch and admission control: refuse BEFORE creating any row
   const ctl = deps.control ? await deps.control.get() : DEFAULT_CONTROL;
   if (ctl.mode === "paused") return err(503, errBody("paused", ctl.message ?? "The AI instructor is paused for maintenance. Please try again later.", true, 60));
@@ -70,11 +71,11 @@ export async function warm(deps: Deps, c: Caller, sessionId: string): Promise<Re
     warmAt.set(key, nowMs);
     const a = await deps.store.getCourseAccess(c.userId, s.courseId, new Date());
     if (!a.allowed || (!a.settings.enabled && !a.isStaff)) return ok({ warmed: false });
-    const stored = await deps.store.getStoredKey(a.ownerId);
+    const kOwner = keyOwnerOf(deps, a), stored = kOwner ? await deps.store.getStoredKey(kOwner) : null;
     if (!stored || (stored.provider && stored.provider !== "anthropic")) return ok({ warmed: false });
     // Prime the cached prefix every turn shares (the tools and the teaching rules) and the decrypted key path, and load the book into this instance for the next turn.
     void deps.content.bookData?.(s.courseId).catch(() => {});
-    const apiKey = await decryptKey(stored.ciphertext, stored.iv, a.ownerId, deps.kek);
+    const apiKey = await decryptKey(stored.ciphertext, stored.iv, kOwner, deps.kek);
     const allowed = MODELS.allowed as readonly string[];
     const model = a.settings.model && allowed.includes(a.settings.model) ? a.settings.model : stored.model && allowed.includes(stored.model) ? stored.model : MODELS.default;
     const reviewOn = a.settings.reviewEnabled === true && !!deps.store.reviewList;
@@ -175,17 +176,19 @@ export async function getSettings(deps: Deps, c: Caller, courseId: string): Prom
 const settingsBody = (s: CourseSettings) => ({
   enabled: s.enabled, retention_days: s.retentionDays, student_daily_tokens: s.studentDailyTokens, course_monthly_usd: s.courseMonthlyUsd, model: s.model,
   ai_policy: s.aiPolicy, allow_worked_solutions: s.allowWorkedSolutions, block_during_assessments: s.blockDuringAssessments, learning_record_days: s.learningRecordDays, store_mastery: s.storeMastery,
-  review_enabled: s.reviewEnabled, review_show_solutions: s.reviewShowSolutions,
+  review_enabled: s.reviewEnabled, review_show_solutions: s.reviewShowSolutions, payer: s.payer,
 });
-export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean }): Promise<Result> {
+export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform" }): Promise<Result> {
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change these settings.", false));
+  if (p.payer !== undefined && (await deps.store.getRole(c.userId)) !== "admin") return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
+  if (p.payer === "platform" && !deps.platformKeyOwner) return err(409, errBody("bad_request", "The platform key is not configured yet.", false));
   const s = await deps.store.setSettings(courseId, {
     ...(p.enabled !== undefined && { enabled: p.enabled }), ...(p.retention_days !== undefined && { retentionDays: p.retention_days }),
     ...(p.student_daily_tokens !== undefined && { studentDailyTokens: p.student_daily_tokens }), ...(p.course_monthly_usd !== undefined && { courseMonthlyUsd: p.course_monthly_usd }), ...(p.model !== undefined && { model: p.model }),
     ...(p.ai_policy !== undefined && { aiPolicy: p.ai_policy }), ...(p.allow_worked_solutions !== undefined && { allowWorkedSolutions: p.allow_worked_solutions }),
     ...(p.block_during_assessments !== undefined && { blockDuringAssessments: p.block_during_assessments }), ...(p.learning_record_days !== undefined && { learningRecordDays: p.learning_record_days }), ...(p.store_mastery !== undefined && { storeMastery: p.store_mastery }),
-    ...(p.review_enabled !== undefined && { reviewEnabled: p.review_enabled }), ...(p.review_show_solutions !== undefined && { reviewShowSolutions: p.review_show_solutions }),
+    ...(p.payer !== undefined && { payer: p.payer }), ...(p.review_enabled !== undefined && { reviewEnabled: p.review_enabled }), ...(p.review_show_solutions !== undefined && { reviewShowSolutions: p.review_show_solutions }),
   });
   deps.accessCache?.clear?.();     // settings changed: drop cached access so the new rules apply on the next turn
   deps.log("info", "settings_changed", { course_id: courseId, user: await deps.userHash(c.userId) });
@@ -209,7 +212,7 @@ export async function reviewStatus(deps: Deps, c: Caller, courseId: string): Pro
   const a = await reviewAccess(deps, c, courseId);
   if (!a.allowed) return err(403, errBody("not_enrolled", "You do not have access to this course's AI instructor.", false));
   const s = deps.store;
-  const stored = a.settings.reviewEnabled ? await s.getStoredKey(a.ownerId) : null;
+  const stored = a.settings.reviewEnabled && keyOwnerOf(deps, a) ? await s.getStoredKey(keyOwnerOf(deps, a)) : null;
   const consent = a.settings.reviewEnabled && s.reviewConsentGet ? await s.reviewConsentGet(c.userId, courseId) : null;
   const solutions = reviewSolutionsAllowed(a.settings);
   const [log, mine] = await Promise.all([

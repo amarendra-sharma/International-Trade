@@ -1,6 +1,6 @@
 // converse.ts - one student turn: authorise, reserve the turn atomically, stream Claude, run allowlisted tools,
 // persist exactly once. Pure orchestration over injected dependencies, so every failure path is unit-testable.
-import { LIMITS, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
+import { LIMITS, LONG_PROMPT, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
 import { sleep as realSleep, withRetry } from "./retry.ts";
 import { buildSystem } from "./prompt.ts";
 import { retrieveForTurn } from "./content.ts";
@@ -20,24 +20,33 @@ export type Semaphore = Admission;
 
 export interface Deps {
   store: Store; provider: LlmProvider; content: ContentRepo; log: Logger; kek: string; userHash: (id: string) => Promise<string>;
-  gate: Admission; control?: ControlCache; accessCache?: TtlCache<{ access: CourseAccess; stored: StoredKey | null }>; breakers?: BreakerSet; assessCache?: TtlCache<boolean>; admissionWaitMs?: number; now?: () => Date; rand?: () => number; sleep?: typeof realSleep; baseURL?: string; extraHosts?: string[];
+  gate: Admission; control?: ControlCache; accessCache?: TtlCache<{ access: CourseAccess; stored: StoredKey | null }>; breakers?: BreakerSet; assessCache?: TtlCache<boolean>; admissionWaitMs?: number; now?: () => Date; rand?: () => number; sleep?: typeof realSleep; baseURL?: string; extraHosts?: string[]; platformKeyOwner?: string;
   timeouts?: Partial<{ firstEventMs: number; idleMs: number; totalMs: number; pollMs: number }>;
 }
 export interface Caller { userId: string }
+
+/** Whose stored key pays for this course's AI: the platform's when a platform administrator set the course to "platform" and a platform key owner is configured; otherwise the course owner's. */
+export const keyOwnerOf = (deps: { platformKeyOwner?: string }, a: { ownerId: string; settings: { payer?: string } }): string => a.settings.payer === "platform" ? (deps.platformKeyOwner ?? "") : a.ownerId;
 
 export class TimeoutError extends Error { constructor(public phase: "first" | "idle" | "total") { super(`timeout:${phase}`); } }
 
 export const errBody = (error: ErrorCode, message: string, retryable: boolean, retry_after_s?: number): ErrorBody => ({ error, message, retryable, ...(retry_after_s ? { retry_after_s } : {}) });
 
 /** Anthropic models use the published table. Any other provider uses the instructor's own prices when given, otherwise a deliberately high placeholder (so budget caps stop early rather than late). */
-export function costMicroUsd(model: string, u: Usage, other?: { priceIn: number | null; priceOut: number | null }): number {
+export function costMicroUsd(model: string, u: Usage, other?: { priceIn: number | null; priceOut: number | null }, longUsage?: Usage): number {
   if (other) {
     const pi = other.priceIn ?? UNKNOWN_PRICE_USD_PER_MTOK.input, po = other.priceOut ?? UNKNOWN_PRICE_USD_PER_MTOK.output;
     return Math.round((u.input + u.cacheRead + u.cacheWrite) * pi + u.output * po);
   }
   const p = PRICES_USD_PER_MTOK[model] ?? PRICES_USD_PER_MTOK[MODELS.default];
-  return Math.round(u.input * p.input + u.output * p.output + u.cacheRead * p.cacheRead + u.cacheWrite * p.cacheWrite);
+  const base = (x: Usage) => x.input * p.input + x.output * p.output + x.cacheRead * p.cacheRead + x.cacheWrite * p.cacheWrite;
+  const lp = LONG_PROMPT[model];
+  // `longUsage` is the sum of the requests in this turn whose prompt crossed the long-prompt line; those pay the extra multiple.
+  return Math.round(base(u) + (longUsage && lp ? base(longUsage) * (lp.mult - 1) : 0));
 }
+/** True when one request's prompt is over the model's long-prompt line. */
+export const isLongPrompt = (model: string, u: Usage): boolean => { const lp = LONG_PROMPT[model]; return !!lp && u.input + u.cacheRead + u.cacheWrite > lp.over; };
+const addUsage = (a: Usage, b: Usage): Usage => ({ input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead, cacheWrite: a.cacheWrite + b.cacheWrite });
 
 const estTokens = (s: string) => Math.ceil(s.length / 3.5);
 
@@ -91,7 +100,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     if (hit) ({ access, stored } = hit);
     else {
       access = await store.getCourseAccess(caller.userId, session.courseId, now());
-      stored = access.allowed ? await store.getStoredKey(access.ownerId) : null;
+      stored = access.allowed && keyOwnerOf(deps, access) ? await store.getStoredKey(keyOwnerOf(deps, access)) : null;
       deps.accessCache?.set(ck, { access, stored }, access.allowed && stored ? undefined : 3000);      // denials and "no key yet" are remembered only briefly
     }
     dbBreaker?.success();
@@ -118,7 +127,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
   // ---- operator switch and provider breakers: refuse BEFORE reserving a turn, so nothing is billed, counted or stored ----------------
   const ctl = deps.control ? await deps.control.get() : DEFAULT_CONTROL;
   if (ctl.mode === "paused") return fail(errBody("paused", ctl.message ?? "The AI instructor is paused for maintenance. Please try again later.", true, 60));
-  const ownerBreaker = deps.breakers?.get(`key:${access.ownerId}`), globalBreaker = deps.breakers?.get("anthropic");
+  const ownerBreaker = deps.breakers?.get(`key:${keyOwnerOf(deps, access)}`), globalBreaker = deps.breakers?.get("anthropic");
   for (const b of [ownerBreaker, globalBreaker]) {
     const c = b?.check();
     if (c && !c.allowed) { log("warn", "turn_rejected", { code: "provider_breaker_open", course_id: session.courseId }); return fail(errBody("provider_unavailable", "The AI service is temporarily unavailable. Try again shortly.", true, c.retryAfterS)); }
@@ -131,7 +140,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
   const onClientAbort = () => ac.abort(new DOMException("client", "AbortError"));
   if (clientSignal.aborted) onClientAbort(); else clientSignal.addEventListener("abort", onClientAbort, { once: true });
   const timers: number[] = [];
-  let assistantText = "", usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ttft: number | null = null;
+  let assistantText = "", usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, longUsage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ttft: number | null = null;
   const otherProvider = stored.provider && stored.provider !== "anthropic";
   const model = stored.model && (MODELS.allowed as readonly string[]).includes(stored.model) ? stored.model : MODELS.default;
   // Claude: the course may pick among the allowed Claude models. Any other provider: the model the instructor saved with the key (the course-level Claude picker does not apply).
@@ -157,9 +166,11 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     emit({ event: "accepted", data: { turn_id: turnId } });
 
     // slow, independent steps start now and are awaited only when needed; the database reads, the key and the book all overlap
-    // Voice turns are fast turns: the table of contents plus only the chapters the question is about. Typed chat keeps the whole cached book.
-    const voiceFast = req.input_mode === "voice" && !otherProvider && !!deps.content.bookData;
-    const keyP = decryptKey(stored.ciphertext, stored.iv, access.ownerId, deps.kek);
+    // Every turn sends the table of contents plus only the chapters the question is about (voice: two, typed: up to three). The whole book is about
+    // 110k tokens, which is slow and, on Haiku 5.5, is billed at five times the rate above 100k. Providers without prompt caching, or content without chapter data, keep the old path.
+    const voiceFast = !otherProvider && !!deps.content.bookData;
+    const maxChapters = req.input_mode === "voice" ? 2 : 3, maxChars = req.input_mode === "voice" ? 70_000 : 100_000;
+    const keyP = decryptKey(stored.ciphertext, stored.iv, keyOwnerOf(deps, access), deps.kek);
     keyP.catch(() => {});
     const within = <T,>(p: Promise<T>, ms: number): Promise<T> => Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
     const bookP: Promise<string> = (!voiceFast && !otherProvider && deps.content.fullText)
@@ -183,7 +194,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         if (retrieval.coverage === "strong") for (const p of retrieval.passages) if (typeof p.chapter === "number" && !want.includes(p.chapter)) want.push(p.chapter);
         if (!want.length && typeof req.context?.chapter === "number") want.push(req.context.chapter);
         let text = "", used = 0;
-        for (const ch of want.slice(0, 3)) { const t = data.chapters.get(ch); if (!t) continue; if (used && text.length + t.length > 70_000) break; text += (text ? "\n\n" : "") + t; used++; if (used >= 2) break; }
+        for (const ch of want.slice(0, 3)) { const t = data.chapters.get(ch); if (!t) continue; if (used && text.length + t.length > maxChars) break; text += (text ? "\n\n" : "") + t; used++; if (used >= maxChapters) break; }
         focused = { toc: data.toc, text };
       }
     }
@@ -237,7 +248,8 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         return { retry: false };
       }, { signal: ac.signal, rand: deps.rand, sleep, deadline: t0 + to.totalMs, onRetry: (a, ms) => log("warn", "provider_retry", { attempt: a, latency_ms: ms }) });
 
-      usage = { input: usage.input + final.usage.input, output: usage.output + final.usage.output, cacheRead: usage.cacheRead + final.usage.cacheRead, cacheWrite: usage.cacheWrite + final.usage.cacheWrite };
+      usage = addUsage(usage, final.usage);
+      if (!otherProvider && isLongPrompt(chosenModel, final.usage)) longUsage = addUsage(longUsage, final.usage);
       stopReason = final.stopReason;
       // The sentence she said before drawing must be released to the voice NOW, not held until the next text arrives after the tool has run.
       if (assistantText.length > textBefore && (final.stopReason === "tool_use" || final.stopReason === "max_tokens")) { assistantText += "\n\n"; emit({ event: "delta", data: { text: "\n\n" } }); }
@@ -283,8 +295,8 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         if (dir.helpDetail) await store.recordEvent(caller.userId, session.courseId, session.id, `${turnId}:help`, { event: "help_requested", topic: (topic ?? "general").toLowerCase(), detail: dir.helpDetail });
       } catch { log("warn", "learning_event_failed", { turn_id: turnId }); }
     }
-    const closed = await store.finishTurn({ turnId, status: "completed", assistantText, endState: "speaking", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride) });
-    log("info", "turn_done", { turn_id: turnId, session_id: session.id, course_id: session.courseId, input_tokens: usage.input, output_tokens: usage.output, cache_read_tokens: usage.cacheRead, cost_micro_usd: costMicroUsd(chosenModel, usage, priceOverride), latency_ms: Date.now() - t0, ttft_ms: ttft ?? undefined, pre_ms: preMs, stop_reason: stopReason });
+    const closed = await store.finishTurn({ turnId, status: "completed", assistantText, endState: "speaking", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride, longUsage) });
+    log("info", "turn_done", { turn_id: turnId, session_id: session.id, course_id: session.courseId, input_tokens: usage.input, output_tokens: usage.output, cache_read_tokens: usage.cacheRead, cost_micro_usd: costMicroUsd(chosenModel, usage, priceOverride, longUsage), latency_ms: Date.now() - t0, ttft_ms: ttft ?? undefined, pre_ms: preMs, stop_reason: stopReason });
     if (closed) emit({ event: "done", data: { turn_id: turnId, stop_reason: stopReason, usage: { input_tokens: usage.input, output_tokens: usage.output } } });
   } catch (e) {
     const interrupted = ac.signal.aborted && !(ac.signal.reason instanceof TimeoutError);
@@ -297,7 +309,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     if (!interrupted) log("warn", "turn_failed", { turn_id: turnId || undefined, code: body.error, session_id: session.id, course_id: session.courseId, latency_ms: Date.now() - t0 });
     if (turnId) {
       try {
-        await store.finishTurn({ turnId, status: interrupted ? "interrupted" : "failed", assistantText, errorCode: interrupted ? undefined : body.error, endState: interrupted ? "interrupted" : "listening", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride) });
+        await store.finishTurn({ turnId, status: interrupted ? "interrupted" : "failed", assistantText, errorCode: interrupted ? undefined : body.error, endState: interrupted ? "interrupted" : "listening", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride, longUsage) });
       } catch (pe) { log("error", "persist_failed", { turn_id: turnId, code: "finish_turn" }); void pe; }
     }
     if (!interrupted) fail(body);
@@ -307,6 +319,6 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     deps.gate.release();
   }
 }
-function usageRecord(turnId: string, s: { id: string; courseId: string }, userId: string, model: string, u: Usage, latencyMs: number, ttftMs: number | null, other?: { priceIn: number | null; priceOut: number | null }) {
-  return { turnId, courseId: s.courseId, userId, sessionId: s.id, model, inputTokens: u.input, outputTokens: u.output, cacheReadTokens: u.cacheRead, cacheWriteTokens: u.cacheWrite, costMicroUsd: costMicroUsd(model, u, other), latencyMs, ttftMs };
+function usageRecord(turnId: string, s: { id: string; courseId: string }, userId: string, model: string, u: Usage, latencyMs: number, ttftMs: number | null, other?: { priceIn: number | null; priceOut: number | null }, longUsage?: Usage) {
+  return { turnId, courseId: s.courseId, userId, sessionId: s.id, model, inputTokens: u.input, outputTokens: u.output, cacheReadTokens: u.cacheRead, cacheWriteTokens: u.cacheWrite, costMicroUsd: costMicroUsd(model, u, other, longUsage), latencyMs, ttftMs };
 }

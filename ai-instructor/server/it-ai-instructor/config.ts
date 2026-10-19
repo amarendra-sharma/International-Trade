@@ -8,7 +8,9 @@ export const MODELS = {
 };
 
 // USD per million tokens, from Anthropic's published pricing page (read 2026-10-16). Update when it changes.
-// Haiku 5.5 has a long-prompt surcharge above 100k input tokens; our prompts are capped far below that.
+// Haiku 5.5 charges LONG_PROMPT.mult times these rates on any single request whose prompt (input + cache reads + cache writes) exceeds LONG_PROMPT.over tokens.
+// The whole textbook is about 110k tokens, so a request carrying it pays the surcharge; the focused context (contents + two chapters) stays far below it.
+export const LONG_PROMPT: Record<string, { over: number; mult: number }> = { "claude-haiku-5-5": { over: 100_000, mult: 5 } };
 export const PRICES_USD_PER_MTOK: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
   "claude-haiku-5-5": { input: 0.10, output: 0.50, cacheWrite: 0.125, cacheRead: 0.01 },
   "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.10 },
