@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Anthropic key check</title>
+<style>
+body{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:2rem auto;padding:0 1rem;color:#1b2430}
+label{display:block;margin-top:1rem;font-weight:600}
+input,select,button{font:inherit;width:100%;padding:.6rem;margin-top:.3rem;box-sizing:border-box}
+button{background:#1f4e79;color:#fff;border:0;border-radius:6px;cursor:pointer;margin-top:1.2rem}
+pre{background:#f1f4f8;padding:1rem;border-radius:6px;white-space:pre-wrap;word-break:break-word}
+</style></head><body>
+<h1>Anthropic key check</h1>
+<p>Paste your key and press Check. It is sent once to Anthropic through a temporary checker and is not stored or saved anywhere.</p>
+<label for="k">API key</label><input id="k" type="password" autocomplete="off" placeholder="sk-ant-...">
+<label for="m">Model</label>
+<select id="m"><option>claude-haiku-5-5</option><option>claude-sonnet-5-5</option><option>claude-haiku-4-5-20251001</option></select>
+<button id="go" type="button">Check</button>
+<pre id="out" hidden></pre>
+<script>
+var go=document.getElementById('go'),out=document.getElementById('out');
+go.onclick=function(){
+  out.hidden=false;out.textContent='Checking...';
+  fetch('https://rtaiivegcqqmdchpguzn.supabase.co/functions/v1/it-ai-keycheck',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({api_key:document.getElementById('k').value.trim(),model:document.getElementById('m').value})})
+  .then(function(r){return r.json()}).then(function(j){
+    out.textContent=(j.ok?'WORKS. ':'')+JSON.stringify(j,null,2);
+  }).catch(function(e){out.textContent='Could not reach the checker: '+e});
+};
+</script></body></html>
