@@ -6,10 +6,10 @@
 //   load(url, onProgress)              -> Promise<{ morphNames: string[] }>
 //   setMorphs(weightsByName)           ; setPose({rx,ry,rz,breath}) ; render() ; resize(w,h)
 //   setQuality(tier) ; suspend() ; onContextLost(cb) ; dispose()
-import { isApprovedModelUrl } from './config.js';
-import { InstructorStateMachine } from './instructor-state.js';
-import { LipSyncController, analyserLevelSource, analyserBrightnessSource } from './lipsync.js';
-import { createBlinkScheduler, ExpressionBlender, STATE_EXPRESSION, idlePose } from './morph-driver.js';
+import { isApprovedModelUrl } from './config.js?v=20261019b';
+import { InstructorStateMachine } from './instructor-state.js?v=20261019b';
+import { LipSyncController, analyserLevelSource, analyserBrightnessSource } from './lipsync.js?v=20261019b';
+import { createBlinkScheduler, ExpressionBlender, STATE_EXPRESSION, idlePose } from './morph-driver.js?v=20261019b';
 
 var CORE_LIP = ['jawOpen'];
 var CORE_BLINK = ['eyeBlinkLeft', 'eyeBlinkRight'];

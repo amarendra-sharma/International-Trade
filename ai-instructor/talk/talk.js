@@ -4,11 +4,11 @@
 //     (downloaded once, about 90 MB, then cached), or - as a fallback the student can choose - a voice built into the device (local-voice.js).
 //   - The answers come from the same secure backend as the text chat (the widget's own backend object), so limits, privacy and the
 //     course rules are identical. Everything rendered here uses textContent.
-import { createInstructor, InstructorStateMachine } from './index.js';
-import { createVoice } from './voice/index.js';
-import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js';
-import { InstructorAudio } from './audio.js';
-import { Whiteboard } from './whiteboard.js';
+import { createInstructor, InstructorStateMachine } from './index.js?v=20261019b';
+import { createVoice } from './voice/index.js?v=20261019b';
+import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js?v=20261019b';
+import { InstructorAudio } from './audio.js?v=20261019b';
+import { Whiteboard } from './whiteboard.js?v=20261019b';
 
 var CSS = [
 '.mnai-talk{position:fixed;inset:0;z-index:99995;background:rgba(5,10,18,.86);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}',
@@ -43,15 +43,15 @@ export function openTalk(o) {
   var naturalBase = o.naturalBase || new URL('natural/', base).href;
   var engine = o.engine || safeGet('mnai-engine') || 'natural';
   if (engine !== 'device' && engine !== 'natural') engine = 'natural';
-  var audio = engine === 'natural' ? new InstructorAudio() : new LocalVoiceAudio({ preferredVoiceUri: safeGet('mnai-voice') });
+  var audio = engine === 'natural' ? new InstructorAudio() : new LocalVoiceAudio({ preferredVoiceUri: safeGet('mnai-voice'), rate: (function () { var s = parseFloat(safeGet('mnai-speed')); return s >= 0.5 && s <= 2 ? s : 0.9; })() });
   var piper = null, naturalFailed = false;
   var naturalTts = {
     ready: false, _h: [], _p: null,
     onEvent: function (fn) { this._h.push(fn); if (piper) piper.onEvent(fn); },
     load: function () {
       var self = this;
-      if (!this._p) this._p = import(/* @vite-ignore */ naturalBase + 'piper-tts.bundle.js').then(function (m) {
-        piper = new m.PiperTts({ base: naturalBase }); self._h.forEach(function (h) { piper.onEvent(h); }); return piper.load();
+      if (!this._p) this._p = import(/* @vite-ignore */ naturalBase + 'piper-tts.bundle.js?v=20261019b').then(function (m) {
+        piper = new m.PiperTts({ base: naturalBase, lengthScale: 1 / (speed || 0.9) }); self._h.forEach(function (h) { piper.onEvent(h); }); return piper.load();
       }).then(function (i) { self.ready = true; return i; });
       return this._p;
     },
@@ -70,7 +70,7 @@ export function openTalk(o) {
     approvedOrigins: [base], allowRelativeDev: !!o.dev,
     audio: audio,
     lipsync: { jawMax: /\.vrm(\?|$)/i.test(o.modelFile || '') ? 0.95 : 0.4 },        // the old placeholder's jaw looked stretched past ~40%
-    threeDepsUrl: new URL('three-deps.bundle.js', base).href,
+    threeDepsUrl: new URL('three-deps.bundle.js?v=20261019b', base).href,
     privacyNote: o.privacyNote || 'AI-generated and can be wrong. Your voice is turned into text on your own device and the audio is discarded. The text of your questions is handled exactly like the typed chat.',
     onUserText: function (t) { getVoice().then(function (v) { v.submitText(t); }, fail); },
     onPushToTalk: function (down) { held = down; if (down) startTalking(); else stopTalking(); },
@@ -91,6 +91,13 @@ export function openTalk(o) {
   var engLab = el(doc, 'label', '', 'Voice type '), engSel = el(doc, 'select'); engSel.setAttribute('aria-label', 'Voice type');
   [['natural', 'Natural female voice'], ['device', 'Device voice']].forEach(function (x) { var op = el(doc, 'option', '', x[1]); op.value = x[0]; engSel.appendChild(op); });
   engSel.value = engine; engLab.appendChild(engSel); bar.insertBefore(engLab, voiceLab);
+  // Speaking speed: slower is easier to follow while a graph is being drawn. Applies to the next sentence; remembered on this device.
+  var spLab = el(doc, 'label', '', 'Speed '), spSel = el(doc, 'select'); spSel.setAttribute('aria-label', 'Speaking speed');
+  [['0.7', 'Slow (0.7x)'], ['0.8', 'Relaxed (0.8x)'], ['0.9', 'Steady (0.9x)'], ['1', 'Normal (1x)'], ['1.15', 'Quick (1.15x)'], ['1.3', 'Fast (1.3x)']].forEach(function (x) { var op = el(doc, 'option', '', x[1]); op.value = x[0]; spSel.appendChild(op); });
+  var speed = parseFloat(safeGet('mnai-speed')); if (!(speed >= 0.5 && speed <= 2)) speed = 0.9;
+  spSel.value = String(speed); if (spSel.value !== String(speed)) { spSel.value = '0.9'; speed = 0.9; }
+  function applySpeed() { speed = parseFloat(spSel.value) || 0.9; safeSet('mnai-speed', String(speed)); if (piper) piper.lengthScale = 1 / speed; if (audio && 'rate' in audio && engine === 'device') audio.rate = speed; }
+  spSel.addEventListener('change', applySpeed); spLab.appendChild(spSel); bar.insertBefore(spLab, voiceLab);
   engSel.addEventListener('change', function () { safeSet('mnai-engine', engSel.value); var again = Object.assign({}, o, { engine: engSel.value }); close(); openTalk(again); });
 
   if (engine === 'natural') {

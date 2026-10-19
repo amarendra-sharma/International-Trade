@@ -28,7 +28,7 @@ function tokenize(src: string): Tok[] {
   return out;
 }
 const FN1: Record<string, (x: number) => number> = { sqrt: Math.sqrt, ln: Math.log, log10: Math.log10, exp: Math.exp, abs: Math.abs, round: Math.round, floor: Math.floor, ceil: Math.ceil };
-export function evaluate(src: string): number {
+export function evaluate(src: string, vars?: Record<string, number>): number {
   if (src.length > 300) throw new CalcError("expression too long");
   const toks = tokenize(src); let p = 0, depth = 0;
   const peek = () => toks[p], eat = () => toks[p++];
@@ -44,6 +44,7 @@ export function evaluate(src: string): number {
       if (t.t === "num") return t.v;
       if (t.t === "op" && t.v === "(") { const v = expr(); if (!isOp(")")) throw new CalcError("missing )"); eat(); return v; }
       if (t.t === "id") {
+        if (vars && Object.prototype.hasOwnProperty.call(vars, t.v) && !isOp("(")) return vars[t.v];
         if (t.v === "pi") return Math.PI; if (t.v === "e") return Math.E;
         if (!isOp("(")) throw new CalcError(`unknown name "${t.v}"`);
         eat(); const args: number[] = [];

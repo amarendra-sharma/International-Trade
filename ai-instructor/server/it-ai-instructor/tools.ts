@@ -124,18 +124,19 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "show_graph",
-    description: "Draw a graph on the student's screen from computed points (2 to 30 points per curve, up to 4 curves, up to 6 labelled markers). Keep it small: a straight line needs 2 points, a curve about 8 to 12 points, coordinates rounded to one decimal, labels a few words. Work the numbers out in your head or with one calc call; do not call calc repeatedly. Say a short sentence aloud BEFORE calling this, then describe the graph afterwards.",
+    description: "Draw a graph on the student's whiteboard. For ACCURACY give each curve as a FORMULA and the server computes it exactly: either y as a function of x (expr in terms of x, with from and to), or a parametric curve (x_expr and y_expr in terms of a parameter, with param, from and to; this is the right way to draw an offer curve from p). Formulas may use + - * / ^, parentheses, sqrt, ln, exp, abs, min, max, pi. Use points ([[x,y],...], 2 to 40 per curve, one decimal) only when no formula exists. Up to 4 curves and 6 labelled markers; mark equilibria and key points you computed with calc. Give every curve and marker a short `note` (a clause the board shows while that step is being drawn). Draw the curves in the order you will explain them. Say a short sentence aloud BEFORE calling this, then narrate the steps afterwards.",
     input: {
       type: "object", additionalProperties: false, required: ["x_label", "y_label", "series"],
       properties: {
         title: text(80), x_label: text(40), y_label: text(40), x_max: num, y_max: num,
-        series: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label", "points"], properties: { label: text(40), points: pointList, dashed: { type: "boolean" } } } },
-        markers: { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30) } } },
+        series: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label"], properties: { label: text(40), points: pointList, expr: text(200), x_expr: text(200), y_expr: text(200), param: text(8), from: num, to: num, dashed: { type: "boolean" }, note: text(110) } } },
+        markers: { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30), note: text(110) } } },
       },
     },
     async run(i, c) {
-      try { const v = graphSpec(i); c.emitVisual?.(v); const steps = ["the axes (" + v.x_label + " and " + v.y_label + ")", ...v.series.map((x) => "the curve '" + x.label + "'"), ...(v.markers ?? []).map((m) => "the point '" + m.label + "'")];
-        return { shown: true, curves: v.series.length, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in exactly that order, one short sentence per step (first sentence = the axes), then one sentence on what it means." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+      try { const v = graphSpec(i); c.emitVisual?.(v);
+        const steps = ["the axes (" + v.x_label + " and " + v.y_label + ")", ...v.series.map((x) => "the curve '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...(v.markers ?? []).map((m) => "the point '" + m.label + "'" + (m.note ? " (" + m.note + ")" : ""))];
+        return { shown: true, curves: v.series.length, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence, and highlights it while you talk. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in exactly that order, one or two short sentences per step (first sentence = the axes), then say what it means and what to notice." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
   {

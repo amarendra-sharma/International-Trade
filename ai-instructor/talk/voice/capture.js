@@ -1,6 +1,6 @@
 // capture.js - microphone capture at 16 kHz mono for the VAD. Raw audio stays in memory only.
 // The student's browser does echo cancellation (so the instructor's own voice is mostly removed) and noise suppression.
-import { StreamResampler, VAD_RATE } from './audio-utils.js';
+import { StreamResampler, VAD_RATE } from './audio-utils.js?v=20261019b';
 
 export class MicCapture {
   constructor(opts) {
