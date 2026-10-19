@@ -4,11 +4,11 @@
 //     (downloaded once, about 90 MB, then cached), or - as a fallback the student can choose - a voice built into the device (local-voice.js).
 //   - The answers come from the same secure backend as the text chat (the widget's own backend object), so limits, privacy and the
 //     course rules are identical. Everything rendered here uses textContent.
-import { createInstructor, InstructorStateMachine } from './index.js?v=20261019c';
-import { createVoice } from './voice/index.js?v=20261019c';
-import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js?v=20261019c';
-import { InstructorAudio } from './audio.js?v=20261019c';
-import { Whiteboard } from './whiteboard.js?v=20261019c';
+import { createInstructor, InstructorStateMachine } from './index.js?v=20261019d';
+import { createVoice } from './voice/index.js?v=20261019d';
+import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js?v=20261019d';
+import { InstructorAudio } from './audio.js?v=20261019d';
+import { Whiteboard } from './whiteboard.js?v=20261019d';
 
 var CSS = [
 '.mnai-talk{position:fixed;inset:0;z-index:99995;background:rgba(5,10,18,.86);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}',
@@ -50,7 +50,7 @@ export function openTalk(o) {
     onEvent: function (fn) { this._h.push(fn); if (piper) piper.onEvent(fn); },
     load: function () {
       var self = this;
-      if (!this._p) this._p = import(/* @vite-ignore */ naturalBase + 'piper-tts.bundle.js?v=20261019c').then(function (m) {
+      if (!this._p) this._p = import(/* @vite-ignore */ naturalBase + 'piper-tts.bundle.js?v=20261019d').then(function (m) {
         piper = new m.PiperTts({ base: naturalBase, lengthScale: 1 / (speed || 0.9) }); self._h.forEach(function (h) { piper.onEvent(h); }); return piper.load();
       }).then(function (i) { self.ready = true; return i; });
       return this._p;
@@ -58,6 +58,18 @@ export function openTalk(o) {
     synthesize: function (t) { return this.load().then(function () { return piper.synthesize(t); }); },
     dispose: function () { if (piper) piper.dispose(); }
   };
+  // Short acknowledgments, synthesized once when the natural voice is ready, played the instant a question is asked.
+  var ackWavs = { general: [], board: [] }, ackN = 0;
+  function prepAcks() {
+    [['general', 'Good question.'], ['general', 'Okay, let me think about that.'], ['general', 'Sure, one moment.'], ['board', 'Sure, let me put that on the board.'], ['board', 'Okay, let me draw that for you.']].reduce(function (p, x) {
+      return p.then(function () { if (closed) return null; return naturalTts.synthesize(x[1]); }).then(function (w) { if (w) ackWavs[x[0]].push(w); }, function () { /* optional */ });
+    }, Promise.resolve());
+  }
+  function pickAck(text) {
+    var set = /\b(graph|draw|curve|curves|diagram|plot|illustrate|show me|picture|shift|shifts)\b/i.test(text || '') ? ackWavs.board : ackWavs.general;
+    if (!set.length) set = ackWavs.general.length ? ackWavs.general : ackWavs.board; if (!set.length) return null;
+    return set[(ackN++) % set.length];
+  }
   var voiceP = null, voice = null, inst = null, held = false, handles = {}, asrLoaded = false, asrLoading = null;
 
   function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -70,7 +82,7 @@ export function openTalk(o) {
     approvedOrigins: [base], allowRelativeDev: !!o.dev,
     audio: audio,
     lipsync: { jawMax: /\.vrm(\?|$)/i.test(o.modelFile || '') ? 0.95 : 0.4 },        // the old placeholder's jaw looked stretched past ~40%
-    threeDepsUrl: new URL('three-deps.bundle.js?v=20261019c', base).href,
+    threeDepsUrl: new URL('three-deps.bundle.js?v=20261019d', base).href,
     privacyNote: o.privacyNote || 'AI-generated and can be wrong. Your voice is turned into text on your own device and the audio is discarded. The text of your questions is handled exactly like the typed chat.',
     onUserText: function (t) { getVoice().then(function (v) { v.submitText(t); }, fail); },
     onPushToTalk: function (down) { held = down; if (down) startTalking(); else stopTalking(); },
@@ -105,7 +117,7 @@ export function openTalk(o) {
     audio.unlock();
     asrNote.textContent = 'Preparing the natural voice (first time only, about 90 MB)…'; prog.hidden = false;
     naturalTts.onEvent(function (ev) { if (ev && ev.kind === 'progress' && ev.info && typeof ev.info.progress === 'number') progFill.style.width = Math.round(ev.info.progress) + '%'; });
-    naturalTts.load().then(function () { if (!closed) { prog.hidden = true; asrNote.textContent = 'Natural voice ready.'; } },
+    naturalTts.load().then(function () { if (!closed) { prog.hidden = true; asrNote.textContent = 'Natural voice ready.'; prepAcks(); } },
       function () { if (closed) return; naturalFailed = true; safeSet('mnai-engine', 'device'); asrNote.textContent = 'The natural voice could not load on this device, so I switched to your device voice.'; prog.hidden = true;
         setTimeout(function () { if (!closed) { var again = Object.assign({}, o, { engine: 'device' }); close(); openTalk(again); } }, 1800); });
   } else audio.unlock().then(function () {
@@ -128,7 +140,7 @@ export function openTalk(o) {
         tts: engine === 'natural' ? naturalTts : LocalTtsStandIn, toAudioBuffer: engine === 'natural' ? undefined : function (w) { return w; }, glossary: o.glossary || null
       });
     }).then(function (v) {
-      voice = v; wire(v.controller);
+      voice = v; wire(v.controller); if (engine === 'natural') v.controller.ack = pickAck;
       if (closed) { v.dispose(); }
       return v;
     });

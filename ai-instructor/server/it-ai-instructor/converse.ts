@@ -156,37 +156,53 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     log("info", "turn_start", { course_id: session.courseId, session_id: session.id, turn_id: turnId, user, model: chosenModel });
     emit({ event: "accepted", data: { turn_id: turnId } });
 
-    // slow, independent steps start now and are awaited only when needed (they overlap with the history and retrieval reads below)
+    // slow, independent steps start now and are awaited only when needed; the database reads, the key and the book all overlap
+    // Voice turns are fast turns: the table of contents plus only the chapters the question is about. Typed chat keeps the whole cached book.
+    const voiceFast = req.input_mode === "voice" && !otherProvider && !!deps.content.bookData;
     const keyP = decryptKey(stored.ciphertext, stored.iv, access.ownerId, deps.kek);
     keyP.catch(() => {});
-    const bookP: Promise<string> = (!otherProvider && deps.content.fullText)
-      ? Promise.race([deps.content.fullText(session.courseId), new Promise<string>((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000))]).catch(() => { log("warn", "textbook_unavailable", { turn_id: turnId }); return ""; })
+    const within = <T,>(p: Promise<T>, ms: number): Promise<T> => Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+    const bookP: Promise<string> = (!voiceFast && !otherProvider && deps.content.fullText)
+      ? within(deps.content.fullText(session.courseId), 8000).catch(() => { log("warn", "textbook_unavailable", { turn_id: turnId }); return ""; })
       : Promise.resolve("");
-    const apiKey = await keyP;
+    const dataP = voiceFast ? within(deps.content.bookData!(session.courseId), 6000).catch(() => { log("warn", "textbook_unavailable", { turn_id: turnId }); return null; }) : Promise.resolve(null);
+    dataP.catch(() => {});
     // ---- teaching directives (mode, hint-before-answer, instructor rules) and course retrieval, both decided here on the server ------
     const reviewOn = access.settings.reviewEnabled === true && !!store.reviewList;            // the review tools exist only when the course owner turned review on
     const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn });
     const hist = await store.listMessages(session.id);
     const prevUser = [...hist].reverse().find((m) => m.role === "user" && m.turnId !== turnId)?.content;
-    const retrieval = await retrieveForTurn(deps.content, { userId: caller.userId, courseId: session.courseId, chapter: req.context?.chapter ?? null }, req.text, { mode: dir.mode, topic: req.context?.topic, previousUser: prevUser });
+    const [apiKey, retrieval] = await Promise.all([keyP, retrieveForTurn(deps.content, { userId: caller.userId, courseId: session.courseId, chapter: req.context?.chapter ?? null }, req.text, { mode: dir.mode, topic: req.context?.topic, previousUser: prevUser })]);
     log("info", "retrieval", { turn_id: turnId, reason: `${retrieval.coverage}/${retrieval.strategy}`, count: retrieval.passages.length, latency_ms: retrieval.ms, ...(dir.flags.length ? { code: "restricted_request" } : {}) });
     const textbook = await bookP;
+    let focused: { toc: string; text: string } | undefined;
+    if (voiceFast) {
+      const data = await dataP;
+      if (data && (data.toc || data.chapters.size)) {
+        const want: number[] = [];
+        if (retrieval.coverage === "strong") for (const p of retrieval.passages) if (typeof p.chapter === "number" && !want.includes(p.chapter)) want.push(p.chapter);
+        if (!want.length && typeof req.context?.chapter === "number") want.push(req.context.chapter);
+        let text = "", used = 0;
+        for (const ch of want.slice(0, 3)) { const t = data.chapters.get(ch); if (!t) continue; if (used && text.length + t.length > 70_000) break; text += (text ? "\n\n" : "") + t; used++; if (used >= 2) break; }
+        focused = { toc: data.toc, text };
+      }
+    }
     const preMs = Date.now() - t0;
-    const system = buildSystem({ textbook, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: dir.block, retrieved: retrieval.block });
+    const system = buildSystem({ textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
     const messages: Msg[] = buildMessages(hist);
 
     // ---- deadlines: total turn time, and "superseded by a newer turn / ended elsewhere" ------------------------------------------
     timers.push(setTimeout(() => ac.abort(new TimeoutError("total")), to.totalMs) as unknown as number);
     const poll = setInterval(async () => { try { if ((await store.turnStatus(turnId)) !== "generating") ac.abort(new DOMException("superseded", "AbortError")); } catch { /* ignore */ } }, to.pollMs);
     timers.push(poll as unknown as number);
-    await store.setSessionState(session.id, "generating");
+    void store.setSessionState(session.id, "generating").catch(() => {});
 
     // ---- model loop with allowlisted tools -------------------------------------------------------------------------------------
     let stopReason = "end_turn";
     let visualShown = false, truncatedOnce = false, noTools = false;
     let retryLocked = false;      // set once this iteration has streamed text to the student: retrying would repeat it
     for (let iter = 0; iter <= LIMITS.maxToolIterations; iter++) {
-      retryLocked = false;
+      retryLocked = false; const textBefore = assistantText.length;
       const final = await withRetry(async () => {
         // each attempt has its own abort signal, so a timed-out attempt is really cancelled at the provider before we retry
         const attemptAc = new AbortController();
@@ -223,6 +239,8 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
 
       usage = { input: usage.input + final.usage.input, output: usage.output + final.usage.output, cacheRead: usage.cacheRead + final.usage.cacheRead, cacheWrite: usage.cacheWrite + final.usage.cacheWrite };
       stopReason = final.stopReason;
+      // The sentence she said before drawing must be released to the voice NOW, not held until the next text arrives after the tool has run.
+      if (assistantText.length > textBefore && (final.stopReason === "tool_use" || final.stopReason === "max_tokens")) { assistantText += "\n\n"; emit({ event: "delta", data: { text: "\n\n" } }); }
       const calls = final.content.filter((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use");
       // A reply cut off by the token limit loses any half-written tool call. Ask once for a smaller one instead of silently dropping the graph.
       if (final.stopReason === "max_tokens" && !visualShown && !truncatedOnce && iter < LIMITS.maxToolIterations) {

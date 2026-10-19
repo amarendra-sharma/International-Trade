@@ -124,5 +124,7 @@ export interface ContentRepo {
   outline(scope: ContentScope, chapter?: number): Promise<OutlineEntry[]>;
   /** The complete text of every textbook-kind source linked to the course, ready to place in a cached prompt block. Optional: absent means "retrieval only". */
   fullText?(courseId: string): Promise<string>;
+  /** The book split for fast voice turns: table of contents plus each chapter's own text. Optional. */
+  bookData?(courseId: string): Promise<{ full: string; toc: string; chapters: Map<number, string> }>;
 }
 export const NullContent: ContentRepo = { search: async () => [], getSection: async () => [], outline: async () => [] };

@@ -1,12 +1,12 @@
 // index.js - public entry. createInstructor() wires panel + audio + avatar with the self-hosted three.js backend.
-import { AIInstructorAvatar } from './avatar.js?v=20261019c';
-import { InstructorAudio } from './audio.js?v=20261019c';
-import { InstructorPanel } from './panel.js?v=20261019c';
+import { AIInstructorAvatar } from './avatar.js?v=20261019d';
+import { InstructorAudio } from './audio.js?v=20261019d';
+import { InstructorPanel } from './panel.js?v=20261019d';
 export { AIInstructorAvatar, InstructorAudio, InstructorPanel };
-export { LipSyncController, VISEMES } from './lipsync.js?v=20261019c';
-export { InstructorStateMachine, STATES } from './instructor-state.js?v=20261019c';
-export { isApprovedModelUrl } from './config.js?v=20261019c';
-export { requestMicPermission } from './mic.js?v=20261019c';
+export { LipSyncController, VISEMES } from './lipsync.js?v=20261019d';
+export { InstructorStateMachine, STATES } from './instructor-state.js?v=20261019d';
+export { isApprovedModelUrl } from './config.js?v=20261019d';
+export { requestMicPermission } from './mic.js?v=20261019d';
 
 // options: { modelUrl, approvedOrigins, allowRelativeDev, privacyNote, onUserText, onPushToTalk, onInterrupt }
 // Returns { avatar, audio, panel, ready: Promise, dispose() }. Nothing is fetched until you call it.

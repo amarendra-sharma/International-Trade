@@ -1,8 +1,8 @@
 // turn-controller.js - one conversational turn: student speech -> ASR -> backend (streamed) -> TTS -> playback.
 // Every async step re-checks that its turn is still current, so an interruption can never let an old answer
 // start playing. All dependencies are injected: ASR/TTS clients, the backend, the audio player, the state machine.
-import { SentenceSplitter, toSpeakable, isLikelyNoise } from './text-prep.js?v=20261019c';
-import { TurnMetrics } from './metrics.js?v=20261019c';
+import { SentenceSplitter, toSpeakable, isLikelyNoise } from './text-prep.js?v=20261019d';
+import { TurnMetrics } from './metrics.js?v=20261019d';
 
 export class VoiceTurnController {
   constructor(deps) {
@@ -81,6 +81,8 @@ export class VoiceTurnController {
     var self = this, signal = this._abort.signal, current = function () { return self.state.isCurrent(turnId) && !signal.aborted && !self._disposed; };
     this._emit('transcript', { turnId: turnId, text: text, source: source });
     if (this.audio && this.audio.beginTurn) this.audio.beginTurn(turnId);
+    // an instant, pre-recorded acknowledgment (made on this device when Talk opened) covers the moments before the answer's first words arrive
+    if (this.ack && this.audio && this.audio.playBuffer) { try { var aw = this.ack(text); if (aw) this.audio.playBuffer(this.toAudioBuffer(aw), turnId); } catch (e) { /* the ack is optional */ } }
     var splitter = new SentenceSplitter({ fastFirst: true }), chain = Promise.resolve(), queued = 0, first = true, fullText = '', spoke = false, seq = 0;
     this._cur = { turnId: turnId, pending: function () { return seq + (splitter._buf && splitter._buf.trim() ? 1 : 0); } };
 

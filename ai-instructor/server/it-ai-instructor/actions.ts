@@ -71,9 +71,9 @@ export async function warm(deps: Deps, c: Caller, sessionId: string): Promise<Re
     const a = await deps.store.getCourseAccess(c.userId, s.courseId, new Date());
     if (!a.allowed || (!a.settings.enabled && !a.isStaff)) return ok({ warmed: false });
     const stored = await deps.store.getStoredKey(a.ownerId);
-    if (!stored || (stored.provider && stored.provider !== "anthropic") || !deps.content.fullText) return ok({ warmed: false });
-    const book = await Promise.race([deps.content.fullText(s.courseId), new Promise<string>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000))]).catch(() => "");
-    if (!book) return ok({ warmed: false });
+    if (!stored || (stored.provider && stored.provider !== "anthropic")) return ok({ warmed: false });
+    // Prime the cached prefix every turn shares (the tools and the teaching rules) and the decrypted key path, and load the book into this instance for the next turn.
+    void deps.content.bookData?.(s.courseId).catch(() => {});
     const apiKey = await decryptKey(stored.ciphertext, stored.iv, a.ownerId, deps.kek);
     const allowed = MODELS.allowed as readonly string[];
     const model = a.settings.model && allowed.includes(a.settings.model) ? a.settings.model : stored.model && allowed.includes(stored.model) ? stored.model : MODELS.default;
@@ -81,7 +81,7 @@ export async function warm(deps: Deps, c: Caller, sessionId: string): Promise<Re
     const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 30_000);
     let cw = 0, cr = 0;
     try {
-      for await (const ev of deps.provider.stream({ apiKey, model, system: buildSystem({ textbook: book, courseTitle: a.title, term: a.term, directives: "", retrieved: "" }), messages: [{ role: "user", content: "Hello." }], tools: toolDefinitionsForModel({ review: reviewOn }), maxTokens: 1, signal: ac.signal, baseURL: deps.baseURL ?? undefined, provider: stored.provider })) {
+      for await (const ev of deps.provider.stream({ apiKey, model, system: buildSystem({ courseTitle: a.title, term: a.term, directives: "", retrieved: "" }), messages: [{ role: "user", content: "Hello." }], tools: toolDefinitionsForModel({ review: reviewOn }), maxTokens: 1, signal: ac.signal, baseURL: deps.baseURL ?? undefined, provider: stored.provider })) {
         if (ev.type === "end") { cw = ev.usage.cacheWrite; cr = ev.usage.cacheRead; break; }
       }
     } finally { clearTimeout(timer); }

@@ -14,22 +14,42 @@ const toPassage = (r: Record<string, any>): Passage => ({
   score: Number(r.score ?? 0), allTerms: !!r.all_terms, matched: Number(r.matched ?? 0), total: Number(r.total ?? 0), unknown: Number(r.unknown ?? 0),
 });
 
+export interface BookData { full: string; toc: string; chapters: Map<number, string> }
+
 export class SupabaseContent implements ContentRepo {
-  private book = new Map<string, { at: number; text: string }>();
+  private book = new Map<string, { at: number; data: BookData }>();
+  private loading = new Map<string, Promise<BookData>>();
   constructor(private db: Admin) {}
-  invalidate() { this.book.clear(); }
+  invalidate() { this.book.clear(); this.loading.clear(); }
   /** Every textbook-kind source linked to the course, in reading order, as one block of text. Cached 5 minutes per instance. */
-  async fullText(courseId: string): Promise<string> {
-    const hit = this.book.get(courseId); if (hit && Date.now() - hit.at < 300_000) return hit.text;
-    const links = await this.db.from("it_ai_course_sources").select("source_id,max_chapter").eq("course_id", courseId);
-    if (links.error) throw new Error("db: course sources failed");
-    const ids = (links.data ?? []).map((l: Record<string, any>) => l.source_id as string);
-    if (!ids.length) return "";
-    const srcs = await this.db.from("it_ai_sources").select("id,kind").in("id", ids);
-    if (srcs.error) throw new Error("db: sources failed");
+  async fullText(courseId: string): Promise<string> { return (await this.bookData(courseId)).full; }
+  /** The whole book and, for fast voice turns, its table of contents and each chapter's text on its own. One load serves both. */
+  bookData(courseId: string): Promise<BookData> {
+    const hit = this.book.get(courseId); if (hit && Date.now() - hit.at < 300_000) return Promise.resolve(hit.data);
+    const going = this.loading.get(courseId); if (going) return going;
+    const p = this.loadBook(courseId).then((data) => { this.book.set(courseId, { at: Date.now(), data }); return data; }).finally(() => this.loading.delete(courseId));
+    this.loading.set(courseId, p); return p;
+  }
+  private async loadBook(courseId: string): Promise<BookData> {
+    // one lookup returns the links and each source's kind together; if the join is unavailable, fall back to two plain lookups
+    const joined = await this.db.from("it_ai_course_sources").select("source_id,max_chapter,it_ai_sources(id,kind)").eq("course_id", courseId);
+    let links: { data: Record<string, any>[] | null; error: unknown }, books: string[];
+    const empty: BookData = { full: "", toc: "", chapters: new Map() };
+    if (!joined.error && (joined.data ?? []).every((r: Record<string, any>) => "it_ai_sources" in r)) {
+      links = joined;
+      books = (joined.data ?? []).filter((s: Record<string, any>) => { const x = Array.isArray(s.it_ai_sources) ? s.it_ai_sources[0] : s.it_ai_sources; return x && x.kind === "textbook"; }).map((s: Record<string, any>) => s.source_id as string);
+      if (!(joined.data ?? []).length) return empty;
+    } else {
+      links = await this.db.from("it_ai_course_sources").select("source_id,max_chapter").eq("course_id", courseId);
+      if (links.error) throw new Error("db: course sources failed");
+      const ids = (links.data ?? []).map((l: Record<string, any>) => l.source_id as string);
+      if (!ids.length) return empty;
+      const plain = await this.db.from("it_ai_sources").select("id,kind").in("id", ids);
+      if (plain.error) throw new Error("db: sources failed");
+      books = (plain.data ?? []).filter((s: Record<string, any>) => s.kind === "textbook").map((s: Record<string, any>) => s.id as string);
+    }
     const maxBy = new Map<string, number | null>((links.data ?? []).map((l: Record<string, any>) => [l.source_id as string, l.max_chapter as number | null]));
-    const books: string[] = (srcs.data ?? []).filter((s: Record<string, any>) => s.kind === "textbook").map((s: Record<string, any>) => s.id as string);
-    const out: string[] = [];
+    const out: string[] = [], byCh = new Map<number, string[]>(), tocLines: string[] = [], seenToc = new Set<string>();
     for (const id of books) {
       const max = maxBy.get(id) ?? null; let last = "";
       for (let from = 0; ; from += 1000) {
@@ -37,15 +57,16 @@ export class SupabaseContent implements ContentRepo {
         if (error) throw new Error("db: textbook read failed");
         for (const r of data ?? []) {
           if (max !== null && r.chapter > max) continue;
-          if (r.title !== last) { out.push(`\n### ${r.title}  [${r.source_key}]`); last = r.title; }
-          out.push(r.kind === "term" ? `Term: ${r.body}` : r.body);
+          const head = r.title !== last ? `\n### ${r.title}  [${r.source_key}]` : null; if (head) { out.push(head); last = r.title; }
+          const body = r.kind === "term" ? `Term: ${r.body}` : r.body; out.push(body);
+          const list = byCh.get(r.chapter) ?? []; if (head) list.push(head); list.push(body); byCh.set(r.chapter, list);
+          if (head && !seenToc.has(r.title)) { seenToc.add(r.title); tocLines.push(`- ${r.title}  [${r.source_key}]`); }
         }
         if (!data || data.length < 1000) break;
       }
     }
-    const text = out.join("\n").trim();
-    this.book.set(courseId, { at: Date.now(), text });
-    return text;
+    const chapters = new Map<number, string>(); for (const [k, v] of byCh) chapters.set(k, v.join("\n").trim());
+    return { full: out.join("\n").trim(), toc: tocLines.join("\n"), chapters };
   }
   private async rpc<T>(name: string, args: Record<string, unknown>): Promise<T[]> {
     const { data, error } = await this.db.rpc(name, args); if (error) throw new Error(`db: ${name} failed`); return (data ?? []) as T[];
