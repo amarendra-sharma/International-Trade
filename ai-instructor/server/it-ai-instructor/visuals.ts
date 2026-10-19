@@ -17,9 +17,22 @@ const num = (v: unknown, what: string): number => { if (typeof v !== "number" ||
 export interface GraphInput {
   title?: string; x_label: string; y_label: string; x_max?: number; y_max?: number;
   series: { label: string; points?: number[][]; expr?: string; x_expr?: string; y_expr?: string; param?: string; from?: number; to?: number; dashed?: boolean; note?: string }[];
-  markers?: { x: number; y: number; label: string; note?: string }[];
+  markers?: { x?: number; y?: number; label: string; note?: string; intersect?: number[] }[];
 }
 const SAMPLES = 60;
+/** First crossing of two curves (as drawn), ignoring the trivial crossing at the origin that offer curves share. */
+function crossing(a: [number, number][], b: [number, number][], tiny: number): [number, number] | null {
+  for (let i = 0; i < a.length - 1; i++) for (let j = 0; j < b.length - 1; j++) {
+    const [x1, y1] = a[i], [x2, y2] = a[i + 1], [x3, y3] = b[j], [x4, y4] = b[j + 1];
+    const d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3); if (Math.abs(d) < 1e-12) continue;
+    const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d, u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+    if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+    const x = x1 + t * (x2 - x1), y = y1 + t * (y2 - y1);
+    if (Math.abs(x) <= tiny && Math.abs(y) <= tiny) continue;
+    return [Math.round(x * 1e3) / 1e3, Math.round(y * 1e3) / 1e3];
+  }
+  return null;
+}
 /** Points of a curve the SERVER computes exactly: y = f(x) over [from, to], or (x(t), y(t)) for a parametric curve such as an offer curve. */
 function sampleCurve(s: GraphInput["series"][number], k: number): [number, number][] {
   const lo = num(s.from, "from"), hi = num(s.to, "to");
@@ -54,7 +67,18 @@ export function graphSpec(i: GraphInput): GraphSpec {
     if (s.note) out.note = clean(s.note, 110);
     return out;
   });
-  const markers = (i.markers ?? []).slice(0, 8).map((m) => { const o: GraphSpec["markers"][number] = { x: num(m.x, "marker x"), y: num(m.y, "marker y"), label: clean(m.label, 30) }; if (m.note) o.note = clean(m.note, 110); return o; });
+  let ext = 0; for (const s of series) for (const p of s.points) ext = Math.max(ext, Math.abs(p[0]), Math.abs(p[1]));
+  const markers = (i.markers ?? []).slice(0, 8).map((m) => {
+    let x = m.x, y = m.y;
+    if (m.intersect) {
+      const [p, q] = m.intersect; const A = series[(p ?? 0) - 1], B = series[(q ?? 0) - 1];
+      if (!A || !B || p === q) throw new CalcError(`marker "${clean(m.label, 30)}": intersect needs two different curve numbers between 1 and ${series.length}`);
+      const c = crossing(A.points, B.points, ext * 0.02);
+      if (!c) throw new CalcError(`marker "${clean(m.label, 30)}": curves ${p} and ${q} do not cross inside the drawn range; widen the range or give the point yourself`);
+      [x, y] = c;
+    }
+    const o: GraphSpec["markers"][number] = { x: num(x, "marker x"), y: num(y, "marker y"), label: clean(m.label, 30) }; if (m.note) o.note = clean(m.note, 110); return o;
+  });
   const spec: GraphSpec = { kind: "graph", x_label: clean(i.x_label, 40), y_label: clean(i.y_label, 40), series, markers };
   if (i.title) spec.title = clean(i.title, 80);
   if (i.x_max !== undefined) spec.x_max = num(i.x_max, "x_max");

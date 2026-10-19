@@ -129,11 +129,15 @@ Whiteboard.prototype.add = function (spec, katex, baseline) {
   if (!ok) return false;
   if (!this.armed) {
     this.armed = true; this.baseline = baseline || 0; this._saw = false; this._show(true);
-    var self = this, w = this.doc.defaultView || window;
-    if (this._fb) w.clearTimeout(this._fb);
-    this._fb = w.setTimeout(function () { if (!self._saw) self.finish(); }, 12000);     // no voice (muted device, text only): never leave the board half drawn
+    this._watch();
   }      // the board opens blank, like a teacher stepping up to it; the first sentence she says after that draws the first step
   return true;
+};
+/** Safety net for a muted device or a failed voice: if nothing is spoken for a long while, show the whole drawing. Every sentence restarts it, so a slow voice never triggers it. */
+Whiteboard.prototype._watch = function () {
+  var self = this, w = this.doc.defaultView || window;
+  if (this._fb) w.clearTimeout(this._fb);
+  this._fb = w.setTimeout(function () { self.finish(); }, 45000);
 };
 Whiteboard.prototype.advance = function () {
   var s = this.steps[this.next]; if (!s) return false;
@@ -164,6 +168,6 @@ Whiteboard.prototype._trace = function (s, w) {
   w.requestAnimationFrame(frame);
 };
 /** The instructor has just started saying sentence number `index` (1-based within this answer). */
-Whiteboard.prototype.onSentence = function (index) { if (this.armed && index > this.baseline) { this._saw = true; this.advance(); } };
+Whiteboard.prototype.onSentence = function (index) { if (!this.armed) return; this._watch(); if (index > this.baseline) { this._saw = true; this.advance(); } };
 /** The instructor has finished: show whatever is left so the board is always complete. */
 Whiteboard.prototype.finish = function () { var self = this, w = this.doc.defaultView || window; while (this.advance()) { /* reveal the rest */ } w.setTimeout(function () { self.steps.forEach(function (p) { p.classList.remove('cur'); }); self.el.classList.remove('wb-live'); }, 2600); };

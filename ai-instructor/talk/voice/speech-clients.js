@@ -1,6 +1,6 @@
 // speech-clients.js - main-thread handles for the ASR and TTS workers. Same shape as the test fakes.
-import { RpcClient } from './worker-rpc.js?v=20261019b';
-import { sameOriginUrl } from './voice-config.js?v=20261019b';
+import { RpcClient } from './worker-rpc.js?v=20261019c';
+import { sameOriginUrl } from './voice-config.js?v=20261019c';
 
 function common(cfg, pageUrl, part) {
   var base = new URL(cfg.base, pageUrl).href;

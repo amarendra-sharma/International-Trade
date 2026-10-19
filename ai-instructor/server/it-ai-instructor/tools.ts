@@ -124,13 +124,13 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "show_graph",
-    description: "Draw a graph on the student's whiteboard. For ACCURACY give each curve as a FORMULA and the server computes it exactly: either y as a function of x (expr in terms of x, with from and to), or a parametric curve (x_expr and y_expr in terms of a parameter, with param, from and to; this is the right way to draw an offer curve from p). Formulas may use + - * / ^, parentheses, sqrt, ln, exp, abs, min, max, pi. Use points ([[x,y],...], 2 to 40 per curve, one decimal) only when no formula exists. Up to 4 curves and 6 labelled markers; mark equilibria and key points you computed with calc. Give every curve and marker a short `note` (a clause the board shows while that step is being drawn). Draw the curves in the order you will explain them. Say a short sentence aloud BEFORE calling this, then narrate the steps afterwards.",
+    description: "Draw a graph on the student's whiteboard. For ACCURACY give each curve as a FORMULA and the server computes it exactly: either y as a function of x (expr in terms of x, with from and to), or a parametric curve (x_expr and y_expr in terms of a parameter, with param, from and to; this is the right way to draw an offer curve from p). Formulas may use + - * / ^, parentheses, sqrt, ln, exp, abs, min, max, pi. Use points ([[x,y],...], 2 to 40 per curve, one decimal) only when no formula exists. Up to 4 curves and 6 labelled markers; mark equilibria and key points: to mark where two curves cross, give intersect: [curve number, curve number] (1-based, in the order of series) and the server finds the exact crossing; otherwise give x and y from calc. Give every curve and marker a short `note` (a clause the board shows while that step is being drawn). Draw the curves in the order you will explain them. Say a short sentence aloud BEFORE calling this, then narrate the steps afterwards.",
     input: {
       type: "object", additionalProperties: false, required: ["x_label", "y_label", "series"],
       properties: {
         title: text(80), x_label: text(40), y_label: text(40), x_max: num, y_max: num,
         series: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label"], properties: { label: text(40), points: pointList, expr: text(200), x_expr: text(200), y_expr: text(200), param: text(8), from: num, to: num, dashed: { type: "boolean" }, note: text(110) } } },
-        markers: { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30), note: text(110) } } },
+        markers: { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["label"], properties: { x: num, y: num, label: text(30), note: text(110), intersect: { type: "array", minItems: 2, maxItems: 2, items: { type: "integer", minimum: 1, maximum: 8 } } } } },
       },
     },
     async run(i, c) {

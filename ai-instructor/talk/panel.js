@@ -1,6 +1,6 @@
 // panel.js - the instructor panel: stage, status indicators, transcript, controls, text fallback, error state.
 // Uses textContent only (never innerHTML) so transcript text can never inject markup.
-import { requestMicPermission } from './mic.js?v=20261019b';
+import { requestMicPermission } from './mic.js?v=20261019c';
 
 var CSS = [
 '.mnai{--navy:#0f1d33;--navy2:#17263a;--gold:#d9b86a;--ink:#e9eef6;--mute:#9fb0c6;--bad:#ff8a80;--ok:#7fd3a0;display:grid;gap:10px;align-content:start;grid-template-columns:minmax(0,1fr);max-width:980px;margin:0 auto;padding:12px;background:var(--navy);color:var(--ink);border:1px solid #2b3d58;border-radius:14px;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}',

@@ -1,14 +1,14 @@
 // voice/index.js - assembles the voice subsystem: mic -> VAD -> (utterance) -> ASR -> backend -> TTS -> audio.
 // The instructor avatar's InstructorAudio and InstructorStateMachine are passed in, so lip-sync and states keep working.
-import { resolveConfig } from './voice-config.js?v=20261019b';
-import { MicCapture } from './capture.js?v=20261019b';
-import { SileroVad } from './silero.js?v=20261019b';
-import { EnergyVad } from './energy-vad.js?v=20261019b';
-import { VadSegmenter } from './vad-segmenter.js?v=20261019b';
-import { VadPipeline } from './vad-pipeline.js?v=20261019b';
-import { AsrClient, TtsClient } from './speech-clients.js?v=20261019b';
-import { VoiceTurnController } from './turn-controller.js?v=20261019b';
-import { GlossaryCorrector } from './text-prep.js?v=20261019b';
+import { resolveConfig } from './voice-config.js?v=20261019c';
+import { MicCapture } from './capture.js?v=20261019c';
+import { SileroVad } from './silero.js?v=20261019c';
+import { EnergyVad } from './energy-vad.js?v=20261019c';
+import { VadSegmenter } from './vad-segmenter.js?v=20261019c';
+import { VadPipeline } from './vad-pipeline.js?v=20261019c';
+import { AsrClient, TtsClient } from './speech-clients.js?v=20261019c';
+import { VoiceTurnController } from './turn-controller.js?v=20261019c';
+import { GlossaryCorrector } from './text-prep.js?v=20261019c';
 
 export async function createVoice(o) {
   var cfg = resolveConfig(o.config, o.pageUrl || location.href), base = new URL(cfg.base, o.pageUrl || location.href).href;
