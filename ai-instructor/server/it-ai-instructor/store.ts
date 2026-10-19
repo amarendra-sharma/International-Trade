@@ -101,12 +101,14 @@ export interface Store extends Partial<ReviewRepo> {
   deleteLearnerData(userId: string, courseId: string): Promise<{ events: number; mastery: number; feedback: number; sessions: number }>;
 
   // ---- operations (migration 002). Optional so older stores keep working; callers treat absence as "feature off". ----
+  ingestMaterials?(courseId: string, src: { id: string; title: string; kind: string }, chunks: IngestChunk[], replace: boolean): Promise<number>;
   getControl?(): Promise<Control | null>;
   setControl?(patch: Partial<Control>): Promise<Control>;
   countActiveSessions?(withinSeconds: number): Promise<number>;
   reportUsage?(sessionId: string, userId: string, m: SessionMetrics): Promise<boolean>;
   courseSpend?(courseId: string, now: Date): Promise<{ monthUsd: number; todayTurns: number; activeSessions: number }>;
 }
+export interface IngestChunk { chunk_key: string; source_key: string; chapter: number; section: string; heading: string; kind: string; ord: number; pos: number; title: string; body: string }
 export interface SessionMetrics { asrMs?: number; ttsMs?: number; audioInMs?: number; audioOutMs?: number; avatarBytes?: number; avatarInitMs?: number; ttfaMs?: number; turns?: number; interruptions?: number; syncErrors?: number; audioDrops?: number; textOnly?: boolean }
 
 // Course content (migration 003). Every call is scoped to ONE student in ONE course; the database re-checks enrolment on each call.
@@ -120,5 +122,7 @@ export interface ContentRepo {
   search(scope: ContentScope, query: string, limit: number): Promise<Passage[]>;
   getSection(scope: ContentScope, sourceKey: string): Promise<Passage[]>;
   outline(scope: ContentScope, chapter?: number): Promise<OutlineEntry[]>;
+  /** The complete text of every textbook-kind source linked to the course, ready to place in a cached prompt block. Optional: absent means "retrieval only". */
+  fullText?(courseId: string): Promise<string>;
 }
 export const NullContent: ContentRepo = { search: async () => [], getSection: async () => [], outline: async () => [] };

@@ -6,7 +6,7 @@ import { errBody, type Caller, type Deps } from "./converse.ts";
 import { ProviderError } from "./provider.ts";
 import type { ErrorBody } from "./schemas.ts";
 import { DEFAULT_CONTROL, isMode } from "./resilience.ts";
-import type { CourseSettings, SessionMetrics } from "./store.ts";
+import type { CourseSettings, IngestChunk, SessionMetrics } from "./store.ts";
 import { MODES, MODE_LABELS, effectiveMode, masteryEstimate, type Mode } from "./teaching.ts";
 
 export type Result = { status: number; body: unknown };
@@ -221,6 +221,18 @@ export async function completeReviewRequest(deps: Deps, c: Caller, courseId: str
   if (!a.allowed || !a.isStaff) return err(403, errBody("forbidden", "Only the course staff can do this.", false));
   if (!deps.store.completeMeetingRequest) return err(501, errBody("internal", "Meeting requests are not installed (migration 005).", false));
   return ok({ done: await deps.store.completeMeetingRequest(c.userId, courseId, requestId) });
+}
+
+// ---- course materials upload (owner or admin) ---------------------------------------------------------------------------------
+export async function ingestMaterials(deps: Deps, c: Caller, courseId: string, b: { source_id: string; title: string; kind: string; replace?: boolean; chunks: IngestChunk[] }): Promise<Result> {
+  const m = await canManage(deps, c, courseId);
+  if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can upload course materials.", false));
+  if (!deps.store.ingestMaterials) return err(501, errBody("internal", "Materials upload is not available.", false));
+  if (b.chunks.some((k) => !k.source_key.startsWith(b.source_id + ":") || !k.chunk_key.startsWith(k.source_key))) return err(400, errBody("bad_request", "Every chunk must belong to the named source.", false));
+  const n = await deps.store.ingestMaterials(courseId, { id: b.source_id, title: b.title, kind: b.kind }, b.chunks, b.replace === true);
+  (deps.content as { invalidate?: () => void }).invalidate?.();
+  deps.log("info", "materials_ingested", { course_id: courseId, user: await deps.userHash(c.userId), count: n });
+  return ok({ stored: n });
 }
 
 // ---- the student's own learning data (feedback, a readable view, deletion) -----------------------------------------------------

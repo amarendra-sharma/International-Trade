@@ -15,7 +15,38 @@ const toPassage = (r: Record<string, any>): Passage => ({
 });
 
 export class SupabaseContent implements ContentRepo {
+  private book = new Map<string, { at: number; text: string }>();
   constructor(private db: Admin) {}
+  invalidate() { this.book.clear(); }
+  /** Every textbook-kind source linked to the course, in reading order, as one block of text. Cached 5 minutes per instance. */
+  async fullText(courseId: string): Promise<string> {
+    const hit = this.book.get(courseId); if (hit && Date.now() - hit.at < 300_000) return hit.text;
+    const links = await this.db.from("it_ai_course_sources").select("source_id,max_chapter").eq("course_id", courseId);
+    if (links.error) throw new Error("db: course sources failed");
+    const ids = (links.data ?? []).map((l: Record<string, any>) => l.source_id as string);
+    if (!ids.length) return "";
+    const srcs = await this.db.from("it_ai_sources").select("id,kind").in("id", ids);
+    if (srcs.error) throw new Error("db: sources failed");
+    const maxBy = new Map<string, number | null>((links.data ?? []).map((l: Record<string, any>) => [l.source_id as string, l.max_chapter as number | null]));
+    const books: string[] = (srcs.data ?? []).filter((s: Record<string, any>) => s.kind === "textbook").map((s: Record<string, any>) => s.id as string);
+    const out: string[] = [];
+    for (const id of books) {
+      const max = maxBy.get(id) ?? null; let last = "";
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await this.db.from("it_ai_chunks").select("source_key,chapter,section,heading,kind,title,body").eq("source_id", id).order("chapter", { ascending: true }).order("pos", { ascending: true }).range(from, from + 999);
+        if (error) throw new Error("db: textbook read failed");
+        for (const r of data ?? []) {
+          if (max !== null && r.chapter > max) continue;
+          if (r.title !== last) { out.push(`\n### ${r.title}  [${r.source_key}]`); last = r.title; }
+          out.push(r.kind === "term" ? `Term: ${r.body}` : r.body);
+        }
+        if (!data || data.length < 1000) break;
+      }
+    }
+    const text = out.join("\n").trim();
+    this.book.set(courseId, { at: Date.now(), text });
+    return text;
+  }
   private async rpc<T>(name: string, args: Record<string, unknown>): Promise<T[]> {
     const { data, error } = await this.db.rpc(name, args); if (error) throw new Error(`db: ${name} failed`); return (data ?? []) as T[];
   }

@@ -3,7 +3,7 @@
 import { LIMITS, MODELS, RETENTION } from "./config.ts";
 import { assertTransition } from "./session-machine.ts";
 import type { SessionState } from "./schemas.ts";
-import type { MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
+import type { IngestChunk, MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
 import { type Control, isMode } from "./resilience.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -154,6 +154,17 @@ export class SupabaseStore implements Store {
   async interruptTurn(sessionId: string, userId: string, clientTurnId: string, spoken: number | null): Promise<boolean> {
     const { data, error } = await this.db.rpc("it_ai_interrupt_turn", { p_session: sessionId, p_user: userId, p_client_turn: clientTurnId, p_spoken: spoken });
     if (error) throw new Error("db: interrupt failed"); return data === true;
+  }
+  async ingestMaterials(courseId: string, src: { id: string; title: string; kind: string }, chunks: IngestChunk[], replace: boolean): Promise<number> {
+    const s = await this.db.from("it_ai_sources").upsert({ id: src.id, title: src.title, kind: src.kind, version: new Date().toISOString().slice(0, 10), ingested_at: new Date().toISOString() }, { onConflict: "id" });
+    if (s.error) throw new Error("db: source save failed");
+    if (replace) { const d = await this.db.from("it_ai_chunks").delete().eq("source_id", src.id); if (d.error) throw new Error("db: chunk clear failed"); }
+    const rows = chunks.map((c) => ({ chunk_key: c.chunk_key, source_id: src.id, source_key: c.source_key, chapter: c.chapter, section: c.section, heading: c.heading, kind: c.kind, ord: c.ord, pos: c.pos, title: c.title, body: c.body }));
+    const u = await this.db.from("it_ai_chunks").upsert(rows, { onConflict: "chunk_key" });
+    if (u.error) throw new Error("db: chunk save failed");
+    const l = await this.db.from("it_ai_course_sources").upsert({ course_id: courseId, source_id: src.id, max_chapter: null }, { onConflict: "course_id,source_id", ignoreDuplicates: true });
+    if (l.error) throw new Error("db: course link failed");
+    return rows.length;
   }
   // ---- operations (migration 002) ----
   async getControl(): Promise<Control | null> {

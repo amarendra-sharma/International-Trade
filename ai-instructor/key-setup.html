@@ -44,6 +44,10 @@
     <label><input id="rvsol" type="checkbox" style="width:auto"> Let the AI also see the correct answers and explanations (only when the AI policy is "full")</label></div>
     <button id="ssave">Save settings</button></div><div class="msg" id="smsg" role="status"></div>
   <div id="reqsec" hidden><h3>Meeting requests from students</h3><div id="reqlist"></div><div class="msg" id="reqmsg" role="status"></div></div></section>
+<section id="matsec" hidden><h2>Course materials</h2>
+  <small>Upload the materials file Claude prepared for you (materials.json). It is stored privately in your database, linked to the course ID entered above, and used only to help students of that course. Re-uploading replaces the earlier copy.</small>
+  <label for="matfile">materials.json</label><input id="matfile" type="file" accept="application/json,.json">
+  <button id="matup" type="button">Upload to this course</button><div class="msg" id="matmsg" role="status"></div></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
@@ -84,7 +88,7 @@
     say('authmsg','Signing in...');
     var r=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value}); $('pw').value='';
     if(r.error) return say('authmsg',r.error.message,'bad');
-    say('authmsg','Signed in.','ok'); $('keysec').hidden=false; $('coursesec').hidden=false; refresh();
+    say('authmsg','Signed in.','ok'); $('keysec').hidden=false; $('coursesec').hidden=false; $('matsec').hidden=false; refresh();
   };
   $('save').onclick=async function(){
     var k=$('key').value.trim(),p=$('prov').value,a=p==='anthropic'; say('keymsg','Checking the key with '+PROVS[p].label+'...');
@@ -112,6 +116,28 @@
     }catch(e){box.textContent='';say('reqmsg',e.message,'bad')}
   }
 
+  var SRC={'it-slides':{title:'Appleyard 9e lecture slides',kind:'slides'},'it-problems':{title:'Practice problem set (questions only)',kind:'problems'}};
+  $('matup').onclick=async function(){
+    var cid=$('cid').value.trim(),f=$('matfile').files[0];
+    if(!cid) return say('matmsg','Enter the course ID in Course settings first.','bad');
+    if(!f) return say('matmsg','Choose materials.json first.','bad');
+    try{
+      var all=JSON.parse(await f.text()),by={};
+      all.forEach(function(c){(by[c.source_id]=by[c.source_id]||[]).push(c)});
+      var done=0,total=all.length;
+      for(var sid of Object.keys(by)){
+        var meta=SRC[sid]||{title:sid,kind:'other'},rows=by[sid],first=true,i=0;
+        while(i<rows.length){
+          var batch=[];
+          while(i<rows.length&&batch.length<25&&JSON.stringify(batch.concat([rows[i]])).length<11000){batch.push(rows[i]);i++}
+          if(!batch.length){batch.push(rows[i]);i++}
+          await call({action:'ingest_materials',course_id:cid,source_id:sid,title:meta.title,kind:meta.kind,replace:first,chunks:batch});
+          first=false;done+=batch.length;say('matmsg','Uploaded '+done+' of '+total+'...');
+        }
+      }
+      say('matmsg','Done: '+done+' pieces stored.','ok');
+    }catch(e){say('matmsg',e.message,'bad')}
+  };
   $('ssave').onclick=async function(){
     try{var b={action:'set_settings',course_id:$('cid').value.trim(),enabled:$('en').checked,retention_days:+$('ret').value,student_daily_tokens:+$('tok').value,course_monthly_usd:+$('usd').value};
     if(!$('rvblock').hidden){b.review_enabled=$('rven').checked;b.review_show_solutions=$('rvsol').checked}

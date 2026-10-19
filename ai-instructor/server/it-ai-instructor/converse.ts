@@ -164,7 +164,9 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     const prevUser = [...hist].reverse().find((m) => m.role === "user" && m.turnId !== turnId)?.content;
     const retrieval = await retrieveForTurn(deps.content, { userId: caller.userId, courseId: session.courseId, chapter: req.context?.chapter ?? null }, req.text, { mode: dir.mode, topic: req.context?.topic, previousUser: prevUser });
     log("info", "retrieval", { turn_id: turnId, reason: `${retrieval.coverage}/${retrieval.strategy}`, count: retrieval.passages.length, latency_ms: retrieval.ms, ...(dir.flags.length ? { code: "restricted_request" } : {}) });
-    const system = buildSystem({ courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: dir.block, retrieved: retrieval.block });
+    let textbook = "";
+    if (!otherProvider && deps.content.fullText) { try { textbook = await Promise.race([deps.content.fullText(session.courseId), new Promise<string>((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000))]); } catch { log("warn", "textbook_unavailable", { turn_id: turnId }); } }
+    const system = buildSystem({ textbook, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: dir.block, retrieved: retrieval.block });
     const messages: Msg[] = buildMessages(hist);
 
     // ---- deadlines: total turn time, and "superseded by a newer turn / ended elsewhere" ------------------------------------------
