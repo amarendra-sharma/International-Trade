@@ -17,6 +17,7 @@ export interface CourseSettings {
 export interface CourseAccess {
   allowed: boolean; reason?: "not_found" | "not_enrolled" | "inactive" | "expired" | "payment_required";
   isStaff: boolean; ownerId: string; title: string; term: string | null; settings: CourseSettings;
+  platformKeyOwner?: string;      // set only for payer="platform" courses: the admin account whose stored key pays
 }
 export interface StoredKey {
   ciphertext: string; iv: string; model: string; last4: string; updatedAt: string;
@@ -72,6 +73,8 @@ export interface Store extends Partial<ReviewRepo> {
   getRole(userId: string): Promise<Role | null>;
   getCourseAccess(userId: string, courseId: string, now: Date): Promise<CourseAccess>;
   getStoredKey(ownerId: string): Promise<StoredKey | null>;
+  /** The admin account whose stored key is the platform key (the oldest admin key). Optional so test doubles can omit it. */
+  platformKeyOwner?(): Promise<string | null>;
   putStoredKey(ownerId: string, k: Omit<StoredKey, "updatedAt">): Promise<void>;
   deleteStoredKey(ownerId: string): Promise<void>;
   setSettings(courseId: string, patch: Partial<CourseSettings>): Promise<CourseSettings>;

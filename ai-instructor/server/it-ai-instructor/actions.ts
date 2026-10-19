@@ -182,7 +182,7 @@ export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { 
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change these settings.", false));
   if (p.payer !== undefined && (await deps.store.getRole(c.userId)) !== "admin") return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
-  if (p.payer === "platform" && !deps.platformKeyOwner) return err(409, errBody("bad_request", "The platform key is not configured yet.", false));
+  if (p.payer === "platform" && !deps.platformKeyOwner && !(await deps.store.platformKeyOwner?.())) return err(409, errBody("bad_request", "No platform key is saved yet. An administrator must save an AI key first.", false));
   const s = await deps.store.setSettings(courseId, {
     ...(p.enabled !== undefined && { enabled: p.enabled }), ...(p.retention_days !== undefined && { retentionDays: p.retention_days }),
     ...(p.student_daily_tokens !== undefined && { studentDailyTokens: p.student_daily_tokens }), ...(p.course_monthly_usd !== undefined && { courseMonthlyUsd: p.course_monthly_usd }), ...(p.model !== undefined && { model: p.model }),

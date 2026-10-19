@@ -51,7 +51,8 @@ export class SupabaseStore implements Store {
       this.one(this.db.from("it_course_staff").select("can_view,can_grade,can_edit").eq("course_id", courseId).eq("user_id", userId).maybeSingle()),
     ]);
     const settings: CourseSettings = srow ? mapSettings(srow) : DEFAULT_SETTINGS;
-    const base = { ownerId: course.owner_id as string, title: course.title as string, term: (course.term ?? null) as string | null, settings };
+    const platformKeyOwner = settings.payer === "platform" ? (await this.platformKeyOwner()) ?? undefined : undefined;
+    const base = { ownerId: course.owner_id as string, title: course.title as string, term: (course.term ?? null) as string | null, settings, ...(platformKeyOwner ? { platformKeyOwner } : {}) };
     const isStaff = course.owner_id === userId || role === "admin" || !!(staff && (staff.can_view || staff.can_grade || staff.can_edit));
     if (isStaff) return { allowed: true, isStaff: true, ...base };
 
@@ -69,6 +70,16 @@ export class SupabaseStore implements Store {
       if (!paid && !waiver) return { allowed: false, reason: "payment_required", isStaff: false, ...base };
     }
     return { allowed: true, isStaff: false, ...base };
+  }
+
+  async platformKeyOwner(): Promise<string | null> {
+    const admins = await this.db.from("it_profiles").select("id").eq("role", "admin");
+    if (admins.error) throw new Error("db: platform key lookup failed");
+    const ids = (admins.data ?? []).map((r: { id: string }) => r.id);
+    if (!ids.length) return null;
+    const r = await this.db.from("it_ai_keys").select("owner_id").in("owner_id", ids).order("updated_at", { ascending: true }).limit(1);
+    if (r.error) throw new Error("db: platform key lookup failed");
+    return r.data?.[0]?.owner_id ?? null;
   }
 
   async getStoredKey(ownerId: string): Promise<StoredKey | null> {

@@ -26,7 +26,7 @@ export interface Deps {
 export interface Caller { userId: string }
 
 /** Whose stored key pays for this course's AI: the platform's when a platform administrator set the course to "platform" and a platform key owner is configured; otherwise the course owner's. */
-export const keyOwnerOf = (deps: { platformKeyOwner?: string }, a: { ownerId: string; settings: { payer?: string } }): string => a.settings.payer === "platform" ? (deps.platformKeyOwner ?? "") : a.ownerId;
+export const keyOwnerOf = (deps: { platformKeyOwner?: string }, a: { ownerId: string; platformKeyOwner?: string; settings: { payer?: string } }): string => a.settings.payer === "platform" ? (deps.platformKeyOwner || a.platformKeyOwner || "") : a.ownerId;
 
 export class TimeoutError extends Error { constructor(public phase: "first" | "idle" | "total") { super(`timeout:${phase}`); } }
 
