@@ -8,6 +8,7 @@ import { createInstructor, InstructorStateMachine } from './index.js';
 import { createVoice } from './voice/index.js';
 import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js';
 import { InstructorAudio } from './audio.js';
+import { Whiteboard } from './whiteboard.js';
 
 var CSS = [
 '.mnai-talk{position:fixed;inset:0;z-index:99995;background:rgba(5,10,18,.86);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}',
@@ -17,7 +18,6 @@ var CSS = [
 '.mnai-talk-head button,.mnai-talk-bar select{min-height:40px;border-radius:8px;border:1px solid #3a5075;background:#1d3050;color:#e9eef6;padding:0 12px;font:inherit;cursor:pointer}',
 '.mnai-talk-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid #22344f;font:13px system-ui,sans-serif;color:#9fb0c6}',
 '.mnai-talk-bar label{display:flex;gap:6px;align-items:center}',
-'.mnai-talk-visual{margin:0 14px 10px;max-width:560px;max-height:46vh;overflow:auto}.mnai-talk-visual:empty{display:none}.mnai-talk-visual .ai-visual{margin:0;background:#fff;color:#1b2430;border-radius:10px;padding:8px}.mnai-talk-visual .ai-visual svg{max-width:100%;height:auto;max-height:42vh}',
 '.mnai-talk-prog{height:6px;border-radius:3px;background:#2b3d58;overflow:hidden;width:140px}.mnai-talk-prog>i{display:block;height:100%;width:0;background:#d9b86a}'
 ].join('\n');
 
@@ -38,9 +38,7 @@ export function openTalk(o) {
   var asrNote = el(doc, 'span', '', ''), prog = el(doc, 'div', 'mnai-talk-prog'), progFill = el(doc, 'i'); prog.appendChild(progFill); prog.hidden = true;
   var tips = el(doc, 'span', '', 'Hold the Talk button while you speak. Headphones work best. Speech is recognised on your own device; your voice is never uploaded.');
   bar.append(voiceLab, asrNote, prog, tips);
-  var visualHost = el(doc, 'div', 'mnai-talk-visual'); visualHost.setAttribute('aria-live', 'polite');
-  try { new (doc.defaultView || window).MutationObserver(function () { if (visualHost.firstChild) { try { visualHost.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* ok */ } } }).observe(visualHost, { childList: true }); } catch (e) { /* ok */ }
-  box.append(head, root, visualHost, bar); scrim.appendChild(box); doc.body.appendChild(scrim);
+  box.append(head, root, bar); scrim.appendChild(box); doc.body.appendChild(scrim);
 
   var naturalBase = o.naturalBase || new URL('natural/', base).href;
   var engine = o.engine || safeGet('mnai-engine') || 'natural';
@@ -79,6 +77,15 @@ export function openTalk(o) {
     onInterrupt: function () { if (voice) voice.controller.interrupt('user'); }
   });
   var panel = inst.panel;
+  // The whiteboard sits between the instructor and the chat. It appears only when a drawing or equation is involved and reveals it step by step
+  // as the instructor speaks (one step each time she starts a new sentence).
+  var grid = root.querySelector('.mnai') || root;
+  var board = new Whiteboard(doc, { onVisibility: function (on) { grid.classList.toggle('mnai-has-board', !!on); } });
+  grid.appendChild(board.el);
+  audio.on('sentence', function (e) { board.onSentence(e.index); });
+  audio.on('end', function () { board.finish(); });
+  audio.on('stopped', function () { board.finish(); });
+  function addVisual(spec, katex) { return board.add(spec, katex, voice && voice.controller.pendingSentences ? voice.controller.pendingSentences() : 0); }
 
   // Engine choice (natural female voice vs the device's own voice). Changing it re-opens Talk with the other engine.
   var engLab = el(doc, 'label', '', 'Voice type '), engSel = el(doc, 'select'); engSel.setAttribute('aria-label', 'Voice type');
@@ -123,7 +130,7 @@ export function openTalk(o) {
 
   function wire(ctrl) {
     ctrl.on('transcript', function (e) {
-      visualHost.textContent = '';
+      board.reset();
       if (e.source === 'voice') panel.addMessage('student', e.text);
       handles[e.turnId] = panel.addMessage('instructor', '');
       if (o.hooks && o.hooks.studentSaid) o.hooks.studentSaid(e.text, e.source);
@@ -166,5 +173,5 @@ export function openTalk(o) {
   closeBtn.addEventListener('click', close);
   scrim.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
   closeBtn.focus();
-  return { close: close, ready: inst.ready, get visualHost() { return visualHost; }, get audio() { return audio; }, get instructor() { return inst; }, getVoice: getVoice };
+  return { close: close, ready: inst.ready, addVisual: addVisual, get audio() { return audio; }, get instructor() { return inst; }, getVoice: getVoice };
 }

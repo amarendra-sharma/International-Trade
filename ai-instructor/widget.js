@@ -102,7 +102,7 @@ function init() {
         while (mode.options.length > 1) mode.remove(1);
         (j.teaching_modes || []).filter((m) => m.enabled).forEach((m) => mode.appendChild(Object.assign(el('option', null, m.label), { value: m.id })));
       },
-      onVisual: (spec) => { const host = current, tv = talk && talk.visualHost; if (host || tv) loadKatex().then((k) => { katexReady = true; if (tv) mountVisual(spec, tv, k); if (host) mountVisual(spec, host, k); }); },   // in Talk mode the graph also appears inside the Talk window, where the student is looking   // host captured now: KaTeX may finish loading after the turn ends
+      onVisual: (spec) => { const host = current, tk = talk; if (host || tk) loadKatex().then((k) => { katexReady = true; if (tk && tk.addVisual) tk.addVisual(spec, k); if (host) mountVisual(spec, host, k); }); },   // in Talk mode the drawing also goes to the whiteboard, which reveals it as the instructor speaks
     });
   };
   let current = null;   // the assistant bubble currently receiving text (visuals attach under it)

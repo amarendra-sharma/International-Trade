@@ -68,6 +68,9 @@ export class VoiceTurnController {
     return this._answer(turnId, text, 'text');
   }
 
+  /** How many sentences of the current answer have been, or are about to be, queued for speech. */
+  pendingSentences() { return this._cur ? this._cur.pending() : 0; }
+
   _cancelPrevious() {
     if (this._abort) { try { this._abort.abort(); } catch (e) { /* ignore */ } }
     this._abort = new AbortController();
@@ -78,10 +81,11 @@ export class VoiceTurnController {
     var self = this, signal = this._abort.signal, current = function () { return self.state.isCurrent(turnId) && !signal.aborted && !self._disposed; };
     this._emit('transcript', { turnId: turnId, text: text, source: source });
     if (this.audio && this.audio.beginTurn) this.audio.beginTurn(turnId);
-    var splitter = new SentenceSplitter({ fastFirst: true }), chain = Promise.resolve(), queued = 0, first = true, fullText = '', spoke = false;
+    var splitter = new SentenceSplitter({ fastFirst: true }), chain = Promise.resolve(), queued = 0, first = true, fullText = '', spoke = false, seq = 0;
+    this._cur = { turnId: turnId, pending: function () { return seq + (splitter._buf && splitter._buf.trim() ? 1 : 0); } };
 
     var speak = function (sentence) {
-      queued++;
+      queued++; var idx = ++seq;
       chain = chain.then(async function () {
         if (!current()) return;
         var spoken = toSpeakable(sentence);
@@ -92,7 +96,7 @@ export class VoiceTurnController {
         if (!current()) return;
         if (first) { first = false; self.metrics.mark(turnId, 'ttsDone'); }
         spoke = true;
-        self.audio.playBuffer(self.toAudioBuffer(wav), turnId);
+        self.audio.playBuffer(self.toAudioBuffer(wav), turnId, { index: idx, text: sentence });
       });
     };
 

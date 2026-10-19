@@ -47,7 +47,7 @@ InstructorAudio.prototype.beginTurn = function (turnId) {
 InstructorAudio.prototype.currentTime = function () { return this.ctx ? this.ctx.currentTime : 0; };
 // Returns the audio-clock time at which this turn's audio started (for viseme tracks).
 InstructorAudio.prototype.turnStartTime = function () { return this._turnStart; };
-InstructorAudio.prototype.playBuffer = function (audioBuffer, turnId) {
+InstructorAudio.prototype.playBuffer = function (audioBuffer, turnId, info) {
   if (this._disposed || turnId !== this._turn) return false;          // stale: drop silently
   this._ensure();
   var self = this, src = this.ctx.createBufferSource();
@@ -56,6 +56,10 @@ InstructorAudio.prototype.playBuffer = function (audioBuffer, turnId) {
   var now = this.ctx.currentTime, start = Math.max(now + 0.02, this._nextTime);
   if (!this._speaking) { this._speaking = true; this._turnStart = start; this._emit('start', { turnId: turnId, at: start }); }
   src.start(start);
+  if (info) {                                         // tell listeners (the whiteboard) the moment this sentence becomes audible
+    var delayMs = Math.max(0, (start - this.ctx.currentTime) * 1000), t = this._setTimeout(function () { if (!self._disposed && turnId === self._turn) self._emit('sentence', { turnId: turnId, index: info.index, text: info.text }); }, delayMs);
+    this._timers.push(t);
+  }
   this._nextTime = start + audioBuffer.duration;
   this._sources.push(src);
   src.onended = function () {

@@ -143,17 +143,18 @@ LocalVoiceAudio.prototype._armWatch = function () {
   this._watch = this._setTimeout(function () { self._watch = null; if (!self._speaking && self._pending > 0) { self._pending = 0; try { self._synth.cancel(); } catch (e) { /* ok */ } self._maybeFinish(self._turn, true); } }, 6000);
 };
 // token: { text } produced by LocalTtsStandIn. Mirrors InstructorAudio.playBuffer.
-LocalVoiceAudio.prototype.playBuffer = function (token, turnId) {
+LocalVoiceAudio.prototype.playBuffer = function (token, turnId, info) {
   if (this._disposed || turnId !== this._turn || !this._synth || !this._Utter || !token || !token.text) return false;
   if (!this.voice) this.voice = pickVoice(this.voices(), this._preferred);
   if (!this.voice) return false;
   var self = this, u = new this._Utter(token.text);
   u.voice = this.voice; u.lang = this.voice.lang; u.rate = this.rate; u.pitch = 1; u.volume = this._muted ? 0 : 1;
   this._pending++;
-  if (this._muted) return this._simulate(token.text, turnId);   // keep the avatar and timing consistent without sound
+  if (this._muted) return this._simulate(token.text, turnId, info);   // keep the avatar and timing consistent without sound
   u.onstart = function () {
     if (self._disposed || turnId !== self._turn) return;
     self._active = true; self._lastT = self._now(); self._startPlan(token.text);
+    if (info) self._emit('sentence', { turnId: turnId, index: info.index, text: info.text });
     if (self._watch !== null) { self._clearTimeout(self._watch); self._watch = null; }
     if (!self._speaking) { self._speaking = true; self._turnStart = self._now(); self._emit('start', { turnId: turnId, at: self._turnStart }); }
   };
@@ -171,13 +172,14 @@ LocalVoiceAudio.prototype.playBuffer = function (token, turnId) {
 };
 
 // Muted: no sound, but the avatar still "speaks" for a plausible time so captions, states and turn-taking behave the same.
-LocalVoiceAudio.prototype._simulate = function (text, turnId) {
+LocalVoiceAudio.prototype._simulate = function (text, turnId, info) {
   var self = this, words = Math.max(1, String(text).trim().split(/\s+/).length), dur = Math.max(0.6, words * 0.33);
   var now = this._now(), start = Math.max(now, this._simEnd || 0); this._simEnd = start + dur;
   var tokenTurn = turnId;
   this._setTimeout(function () {
     if (self._disposed || tokenTurn !== self._turn) return;
     self._active = true; self._lastT = self._now(); self._startPlan(text);
+    if (info) self._emit('sentence', { turnId: tokenTurn, index: info.index, text: info.text });
     if (!self._speaking) { self._speaking = true; self._turnStart = self._now(); self._emit('start', { turnId: tokenTurn, at: self._turnStart }); }
   }, Math.max(0, (start - now) * 1000));
   this._setTimeout(function () {

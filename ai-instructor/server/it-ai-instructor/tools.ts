@@ -119,7 +119,7 @@ export const TOOLS: ToolDef[] = [
     description: "Show an equation on the student's screen (TeX, at most 300 characters). Say the equation aloud in words as well.",
     input: { type: "object", additionalProperties: false, required: ["tex"], properties: { tex: text(300), caption: text(120) } },
     async run(i, c) {
-      try { const v = equationSpec(i); c.emitVisual?.(v); return { shown: true }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+      try { const v = equationSpec(i); c.emitVisual?.(v); return { shown: true, whiteboard: "The whiteboard writes this equation as your next sentence begins, so say it in words in that sentence." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
   {
@@ -134,7 +134,8 @@ export const TOOLS: ToolDef[] = [
       },
     },
     async run(i, c) {
-      try { const v = graphSpec(i); c.emitVisual?.(v); return { shown: true, curves: v.series.length }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+      try { const v = graphSpec(i); c.emitVisual?.(v); const steps = ["the axes (" + v.x_label + " and " + v.y_label + ")", ...v.series.map((x) => "the curve '" + x.label + "'"), ...(v.markers ?? []).map((m) => "the point '" + m.label + "'")];
+        return { shown: true, curves: v.series.length, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in exactly that order, one short sentence per step (first sentence = the axes), then one sentence on what it means." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
   {
