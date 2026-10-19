@@ -44,7 +44,7 @@ export function numericMatch(student: string, key: string, tol = 0.01): boolean 
 }
 
 const matrix: Schema = { type: "array", minItems: 2, maxItems: 5, items: { type: "array", minItems: 2, maxItems: 5, items: { type: "array", minItems: 2, maxItems: 2, items: num } } };
-const pointList: Schema = { type: "array", minItems: 2, maxItems: 30, items: { type: "array", minItems: 2, maxItems: 2, items: num } };
+const pointList: Schema = { type: "array", minItems: 2, maxItems: 200, items: { type: "array", minItems: 2, maxItems: 2, items: num } };
 
 
 // ---- graded-work review ---------------------------------------------------------------------------------------------------------------------------
@@ -129,8 +129,8 @@ export const TOOLS: ToolDef[] = [
       type: "object", additionalProperties: false, required: ["x_label", "y_label", "series"],
       properties: {
         title: text(80), x_label: text(40), y_label: text(40), x_max: num, y_max: num,
-        series: { type: "array", minItems: 1, maxItems: 4, items: { type: "object", additionalProperties: false, required: ["label", "points"], properties: { label: text(40), points: pointList, dashed: { type: "boolean" } } } },
-        markers: { type: "array", maxItems: 6, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30) } } },
+        series: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label", "points"], properties: { label: text(40), points: pointList, dashed: { type: "boolean" } } } },
+        markers: { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30) } } },
       },
     },
     async run(i, c) {

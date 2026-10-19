@@ -15,10 +15,12 @@ const LIM = 1e6;
 const num = (v: unknown, what: string): number => { if (typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > LIM) throw new CalcError(`${what} must be a finite number below ${LIM}`); return v; };
 
 export function graphSpec(i: { title?: string; x_label: string; y_label: string; x_max?: number; y_max?: number; series: { label: string; points: number[][]; dashed?: boolean }[]; markers?: { x: number; y: number; label: string }[] }): GraphSpec {
-  if (!i.series.length || i.series.length > 6) throw new CalcError("1 to 6 curves");
-  const series = i.series.map((s, k) => {
-    if (s.points.length < 2 || s.points.length > 80) throw new CalcError(`curve ${k + 1} needs 2 to 80 points`);
-    return { label: clean(s.label, 40), dashed: !!s.dashed, points: s.points.map((p, j) => { if (p.length !== 2) throw new CalcError(`point ${j + 1} of curve ${k + 1} must be [x, y]`); return [num(p[0], "x"), num(p[1], "y")] as [number, number]; }) };
+  if (!i.series.length) throw new CalcError("1 or more curves");
+  // Oversized input is thinned rather than rejected, so a long point list still draws.
+  const thin = <T,>(a: T[], n: number): T[] => { if (a.length <= n) return a; const out: T[] = []; for (let q = 0; q < n; q++) out.push(a[Math.round(q * (a.length - 1) / (n - 1))]); return out; };
+  const series = i.series.slice(0, 6).map((s, k) => {
+    if (s.points.length < 2) throw new CalcError(`curve ${k + 1} needs at least 2 points`);
+    return { label: clean(s.label, 40), dashed: !!s.dashed, points: thin(s.points, 40).map((p, j) => { if (p.length !== 2) throw new CalcError(`point ${j + 1} of curve ${k + 1} must be [x, y]`); return [num(p[0], "x"), num(p[1], "y")] as [number, number]; }) };
   });
   const markers = (i.markers ?? []).slice(0, 8).map((m) => ({ x: num(m.x, "marker x"), y: num(m.y, "marker y"), label: clean(m.label, 30) }));
   const spec: GraphSpec = { kind: "graph", x_label: clean(i.x_label, 40), y_label: clean(i.y_label, 40), series, markers };
