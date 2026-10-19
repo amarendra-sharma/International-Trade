@@ -188,6 +188,51 @@ async function render(host) {
   refresh();
 }
 
+// ---- Subscriptions page (platform administrator only): who pays for the AI instructor ----------------------------------------------
+// Shows whether the platform key is saved, links to the key form, and lets the administrator choose, per course, whether the
+// course owner's own key pays (default) or MacroNations' platform key pays. The server enforces administrator-only; this card is only a convenience.
+let subToken = 0;
+async function renderPayer(host) {
+  const st = window.State || {};
+  if (st.role !== 'admin' || !host || host.querySelector('#aiPayerCard')) return;
+  const my = ++subToken;
+  const card = el('div', { class: 'card', id: 'aiPayerCard', style: 'margin-bottom:16px' });
+  card.appendChild(el('h3', { text: 'AI instructor: who pays' }));
+  const keyLine = el('div', { text: 'Checking the platform key…', style: 'font-size:13px;margin:6px 0' });
+  card.appendChild(keyLine);
+  const manage = btn('Add or replace the platform AI key', true);
+  manage.onclick = () => { const n = document.querySelector('.nav-item[data-view="' + VIEW + '"]'); if (n) n.click(); };
+  card.appendChild(manage);
+  const first = host.firstElementChild; if (first && first.nextSibling) host.insertBefore(card, first.nextSibling); else host.appendChild(card);
+  try {
+    const j = await call({ action: 'key_status' });
+    if (my !== subToken) return;
+    keyLine.textContent = j.has_key
+      ? 'Platform key on file ending in ' + j.last4 + ' (saved under your administrator account, model ' + j.model + ').'
+      : 'No platform key saved yet. Save one with the button below while signed in as the administrator; courses cannot use "MacroNations pays" until then.';
+  } catch (e) { keyLine.textContent = e.message; }
+  const cid = st.teachCourseId;
+  if (!cid) { card.appendChild(el('div', { text: 'Select a course to choose who pays for its AI instructor.', style: 'font-size:12.5px;opacity:.8;margin-top:8px' })); return; }
+  const smsg = msg();
+  let s;
+  try { const j = await call({ action: 'get_settings', course_id: cid }); s = j.settings || j; }
+  catch (e) { card.appendChild(smsg); smsg.say(e.message, 'bad'); return; }
+  if (my !== subToken) return;
+  if (!('payer' in s)) { card.appendChild(el('div', { text: 'This server version does not have the payer setting yet.', style: 'font-size:12.5px;opacity:.8' })); return; }
+  const sel = el('select');
+  sel.appendChild(el('option', { value: 'instructor', text: 'The course owner’s own AI key pays (default)' }));
+  sel.appendChild(el('option', { value: 'platform', text: 'MacroNations pays (platform key)' }));
+  sel.value = s.payer === 'platform' ? 'platform' : 'instructor';
+  const save = btn('Save for this course');
+  card.append(field('For the selected course', sel),
+    el('div', { text: 'With “MacroNations pays”, every student’s questions are billed to the platform key. The course’s monthly spending cap (AI Instructor tab) is still enforced; currently $' + s.course_monthly_usd + ' per month.', style: 'font-size:12.5px;opacity:.85' }),
+    save, smsg);
+  save.onclick = async () => {
+    try { await call({ action: 'set_settings', course_id: cid, payer: sel.value }); smsg.say('Saved.', 'ok'); }
+    catch (e) { smsg.say(e.message, 'bad'); }
+  };
+}
+
 function install() {
   const group = document.getElementById('teachGroup');
   if (!group || group.querySelector('[data-view="' + VIEW + '"]')) return !!group;
@@ -222,6 +267,7 @@ function wire() {
   window.rerenderCurrentView = function () {
     orig.apply(this, arguments);
     if (window.currentView === VIEW) { const h = document.getElementById('viewHost'); if (h) render(h); }
+    else if (window.currentView === 'subscriptions') { const h = document.getElementById('viewHost'); if (h) renderPayer(h); }
   };
   return install();
 }
