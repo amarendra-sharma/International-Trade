@@ -60,6 +60,10 @@ export class AiInstructorBackend {
   }
   /** One non-streaming action (for example review_status). Throws BackendError with the server's message. */
   async call(body, signal) { return this._json(body, signal); }
+  /** Best-effort: asks the server to pre-load the course's cached prompt so the first answer is quick. Never throws, never waits for the result. */
+  warm() {
+    return this.startSession().then((id) => { this._post({ action: 'warm', session_id: id }).then((r) => { try { r.body && r.body.cancel && r.body.cancel(); } catch (e) { /* ok */ } }, function () {}); }).catch(function () {});
+  }
   async startSession() {
     if (this.sessionId) return this.sessionId;
     var j = await this._json({ action: 'start_session', course_id: this.courseId, context: this.context ? this.context() : undefined });

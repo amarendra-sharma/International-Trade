@@ -156,7 +156,13 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     log("info", "turn_start", { course_id: session.courseId, session_id: session.id, turn_id: turnId, user, model: chosenModel });
     emit({ event: "accepted", data: { turn_id: turnId } });
 
-    const apiKey = await decryptKey(stored.ciphertext, stored.iv, access.ownerId, deps.kek);
+    // slow, independent steps start now and are awaited only when needed (they overlap with the history and retrieval reads below)
+    const keyP = decryptKey(stored.ciphertext, stored.iv, access.ownerId, deps.kek);
+    keyP.catch(() => {});
+    const bookP: Promise<string> = (!otherProvider && deps.content.fullText)
+      ? Promise.race([deps.content.fullText(session.courseId), new Promise<string>((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000))]).catch(() => { log("warn", "textbook_unavailable", { turn_id: turnId }); return ""; })
+      : Promise.resolve("");
+    const apiKey = await keyP;
     // ---- teaching directives (mode, hint-before-answer, instructor rules) and course retrieval, both decided here on the server ------
     const reviewOn = access.settings.reviewEnabled === true && !!store.reviewList;            // the review tools exist only when the course owner turned review on
     const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn });
@@ -164,8 +170,8 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     const prevUser = [...hist].reverse().find((m) => m.role === "user" && m.turnId !== turnId)?.content;
     const retrieval = await retrieveForTurn(deps.content, { userId: caller.userId, courseId: session.courseId, chapter: req.context?.chapter ?? null }, req.text, { mode: dir.mode, topic: req.context?.topic, previousUser: prevUser });
     log("info", "retrieval", { turn_id: turnId, reason: `${retrieval.coverage}/${retrieval.strategy}`, count: retrieval.passages.length, latency_ms: retrieval.ms, ...(dir.flags.length ? { code: "restricted_request" } : {}) });
-    let textbook = "";
-    if (!otherProvider && deps.content.fullText) { try { textbook = await Promise.race([deps.content.fullText(session.courseId), new Promise<string>((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000))]); } catch { log("warn", "textbook_unavailable", { turn_id: turnId }); } }
+    const textbook = await bookP;
+    const preMs = Date.now() - t0;
     const system = buildSystem({ textbook, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: dir.block, retrieved: retrieval.block });
     const messages: Msg[] = buildMessages(hist);
 
@@ -177,6 +183,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
 
     // ---- model loop with allowlisted tools -------------------------------------------------------------------------------------
     let stopReason = "end_turn";
+    let visualShown = false, truncatedOnce = false;
     let retryLocked = false;      // set once this iteration has streamed text to the student: retrying would repeat it
     for (let iter = 0; iter <= LIMITS.maxToolIterations; iter++) {
       retryLocked = false;
@@ -217,13 +224,22 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       usage = { input: usage.input + final.usage.input, output: usage.output + final.usage.output, cacheRead: usage.cacheRead + final.usage.cacheRead, cacheWrite: usage.cacheWrite + final.usage.cacheWrite };
       stopReason = final.stopReason;
       const calls = final.content.filter((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use");
+      // A reply cut off by the token limit loses any half-written tool call. Ask once for a smaller one instead of silently dropping the graph.
+      if (final.stopReason === "max_tokens" && !visualShown && !truncatedOnce && iter < LIMITS.maxToolIterations) {
+        truncatedOnce = true;
+        log("warn", "reply_truncated", { turn_id: turnId });
+        const said = final.content.filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text").map((b) => b.text).join("").trim();
+        if (said) messages.push({ role: "assistant", content: said });
+        messages.push({ role: "user", content: "(automatic note) Your last reply was cut off before it finished, so nothing was drawn. If you were drawing a graph, call show_graph again now with at most 10 points per curve and coordinates rounded to one decimal, then say one short sentence about it. Do not repeat what you already said." });
+        continue;
+      }
       if (final.stopReason !== "tool_use" || calls.length === 0) break;
 
       messages.push({ role: "assistant", content: final.content });
       const results: ContentBlock[] = [];
       for (const call of calls.slice(0, LIMITS.maxToolsPerIteration)) {
         emit({ event: "tool", data: { name: call.name, status: "running" } });
-        const out = await runTool(call.name, call.input, { store, content: deps.content, userId: caller.userId, courseId: session.courseId, sessionId: session.id, turnId, chapter: req.context?.chapter ?? null, settings: access.settings, solutionGranted: dir.solutionGranted, emitVisual: (v) => emit({ event: "visual", data: v }) }, call.id);
+        const out = await runTool(call.name, call.input, { store, content: deps.content, userId: caller.userId, courseId: session.courseId, sessionId: session.id, turnId, chapter: req.context?.chapter ?? null, settings: access.settings, solutionGranted: dir.solutionGranted, emitVisual: (v) => { visualShown = true; emit({ event: "visual", data: v }); } }, call.id);
         log(out.ok ? "info" : "warn", out.ok ? "tool_ok" : "tool_rejected", { tool: call.name.slice(0, 40), reason: out.ok ? undefined : out.reason, turn_id: turnId });
         emit({ event: "tool", data: { name: call.name, status: out.ok ? "done" : "rejected" } });
         results.push({ type: "tool_result", tool_use_id: call.id, content: out.content, is_error: !out.ok });
@@ -243,7 +259,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       } catch { log("warn", "learning_event_failed", { turn_id: turnId }); }
     }
     const closed = await store.finishTurn({ turnId, status: "completed", assistantText, endState: "speaking", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride) });
-    log("info", "turn_done", { turn_id: turnId, session_id: session.id, course_id: session.courseId, input_tokens: usage.input, output_tokens: usage.output, cache_read_tokens: usage.cacheRead, cost_micro_usd: costMicroUsd(chosenModel, usage, priceOverride), latency_ms: Date.now() - t0, ttft_ms: ttft ?? undefined, stop_reason: stopReason });
+    log("info", "turn_done", { turn_id: turnId, session_id: session.id, course_id: session.courseId, input_tokens: usage.input, output_tokens: usage.output, cache_read_tokens: usage.cacheRead, cost_micro_usd: costMicroUsd(chosenModel, usage, priceOverride), latency_ms: Date.now() - t0, ttft_ms: ttft ?? undefined, pre_ms: preMs, stop_reason: stopReason });
     if (closed) emit({ event: "done", data: { turn_id: turnId, stop_reason: stopReason, usage: { input_tokens: usage.input, output_tokens: usage.output } } });
   } catch (e) {
     const interrupted = ac.signal.aborted && !(ac.signal.reason instanceof TimeoutError);

@@ -2,7 +2,7 @@
 // Only an allowlist of field names is ever emitted; string values are scrubbed for key-like tokens; user ids are hashed.
 const ALLOWED = new Set([
   "event", "level", "ts", "course_id", "session_id", "turn_id", "user", "action", "state", "from", "to", "status", "code", "model",
-  "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "cost_micro_usd", "latency_ms", "ttft_ms", "attempt",
+  "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "cost_micro_usd", "latency_ms", "ttft_ms", "pre_ms", "attempt",
   "tool", "retryable", "http_status", "stop_reason", "reason", "bytes", "chars", "limit", "window", "count", "iteration",
 ]);
 const KEYLIKE = /(sk-ant-[A-Za-z0-9_-]{6,}|sk-[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|Bearer\s+[A-Za-z0-9._-]{10,})/g;

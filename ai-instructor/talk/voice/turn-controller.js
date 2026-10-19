@@ -78,7 +78,7 @@ export class VoiceTurnController {
     var self = this, signal = this._abort.signal, current = function () { return self.state.isCurrent(turnId) && !signal.aborted && !self._disposed; };
     this._emit('transcript', { turnId: turnId, text: text, source: source });
     if (this.audio && this.audio.beginTurn) this.audio.beginTurn(turnId);
-    var splitter = new SentenceSplitter(), chain = Promise.resolve(), queued = 0, first = true, fullText = '', spoke = false;
+    var splitter = new SentenceSplitter({ fastFirst: true }), chain = Promise.resolve(), queued = 0, first = true, fullText = '', spoke = false;
 
     var speak = function (sentence) {
       queued++;

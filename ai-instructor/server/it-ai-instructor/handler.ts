@@ -53,6 +53,7 @@ export function makeHandler(deps: Deps, opts: HttpOptions) {
         case "interrupt": r = await A.interrupt(deps, caller, body.session_id, body.client_turn_id, body.spoken_chars ?? null); break;
         case "client_state": r = await A.clientState(deps, caller, body.session_id, body.state); break;
         case "history": r = await A.history(deps, caller, body.session_id, body.after_seq ?? 0); break;
+        case "warm": r = await A.warm(deps, caller, body.session_id); break;
         case "end_session": r = await A.endSession(deps, caller, body.session_id); break;
         case "set_key": r = await A.setKey(deps, caller, body.api_key, body.model, body.validate, { provider: body.provider, baseUrl: body.base_url, priceIn: body.price_in, priceOut: body.price_out }); break;
         case "key_status": r = await A.keyStatus(deps, caller); break;

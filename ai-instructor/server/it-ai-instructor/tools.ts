@@ -44,7 +44,7 @@ export function numericMatch(student: string, key: string, tol = 0.01): boolean 
 }
 
 const matrix: Schema = { type: "array", minItems: 2, maxItems: 5, items: { type: "array", minItems: 2, maxItems: 5, items: { type: "array", minItems: 2, maxItems: 2, items: num } } };
-const pointList: Schema = { type: "array", minItems: 2, maxItems: 80, items: { type: "array", minItems: 2, maxItems: 2, items: num } };
+const pointList: Schema = { type: "array", minItems: 2, maxItems: 30, items: { type: "array", minItems: 2, maxItems: 2, items: num } };
 
 
 // ---- graded-work review ---------------------------------------------------------------------------------------------------------------------------
@@ -124,13 +124,13 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "show_graph",
-    description: "Draw a graph on the student's screen from computed points (2 to 80 points per curve, up to 6 curves, up to 8 labelled markers). Use calc first so the curves and the equilibrium point are exact. Describe the graph aloud as well.",
+    description: "Draw a graph on the student's screen from computed points (2 to 30 points per curve, up to 4 curves, up to 6 labelled markers). Keep it small: a straight line needs 2 points, a curve about 8 to 12 points, coordinates rounded to one decimal, labels a few words. Work the numbers out in your head or with one calc call; do not call calc repeatedly. Say a short sentence aloud BEFORE calling this, then describe the graph afterwards.",
     input: {
       type: "object", additionalProperties: false, required: ["x_label", "y_label", "series"],
       properties: {
         title: text(80), x_label: text(40), y_label: text(40), x_max: num, y_max: num,
-        series: { type: "array", minItems: 1, maxItems: 6, items: { type: "object", additionalProperties: false, required: ["label", "points"], properties: { label: text(40), points: pointList, dashed: { type: "boolean" } } } },
-        markers: { type: "array", maxItems: 8, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30) } } },
+        series: { type: "array", minItems: 1, maxItems: 4, items: { type: "object", additionalProperties: false, required: ["label", "points"], properties: { label: text(40), points: pointList, dashed: { type: "boolean" } } } },
+        markers: { type: "array", maxItems: 6, items: { type: "object", additionalProperties: false, required: ["x", "y", "label"], properties: { x: num, y: num, label: text(30) } } },
       },
     },
     async run(i, c) {

@@ -11,11 +11,16 @@ export class SentenceSplitter {
     opts = opts || {};
     this.minChars = opts.minChars === undefined ? 24 : opts.minChars;    // merge very short sentences
     this.maxChars = opts.maxChars === undefined ? 260 : opts.maxChars;   // force a break at a clause for long runs
+    this.fastFirst = !!opts.fastFirst;                                   // release the FIRST chunk at an early comma so speech starts sooner
+    this.firstClauseChars = opts.firstClauseChars === undefined ? 32 : opts.firstClauseChars;
+    this._emitted = false;
     this._buf = '';
   }
   push(delta) {
     this._buf += delta;
-    return this._drain(false);
+    var r = this._drain(false);
+    if (r.length) this._emitted = true;
+    return r;
   }
   flush() { return this._drain(true); }
   _drain(final) {
@@ -37,6 +42,7 @@ export class SentenceSplitter {
         }
         else if (next === '"' || next === ')' || next === '”' || next === '’') { isEnd = s[i + 2] !== undefined && /\s/.test(s[i + 2]); }
       }
+      if (!isEnd && this.fastFirst && !this._emitted && (ch === ',' || ch === ';' || ch === ':') && i - start >= this.firstClauseChars && s[i + 1] !== undefined && /\s/.test(s[i + 1])) isEnd = true;
       if (!isEnd && i - start >= this.maxChars && (ch === ',' || ch === ';' || ch === ':') && s[i + 1] !== undefined) isEnd = true;
       if (isEnd) {
         var piece = s.slice(start, i + 1).trim();

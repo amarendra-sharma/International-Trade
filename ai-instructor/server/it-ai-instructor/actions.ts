@@ -1,7 +1,8 @@
 // actions.ts - the non-streaming actions: sessions, interrupts, history, key and settings management.
 import { LIMITS, MODELS, PROVIDERS, isProviderId, resolveBaseURL } from "./config.ts";
-import { reviewSolutionsAllowed } from "./tools.ts";
-import { encryptKey, last4, looksLikeKeyFor } from "./vault.ts";
+import { reviewSolutionsAllowed, toolDefinitionsForModel } from "./tools.ts";
+import { buildSystem } from "./prompt.ts";
+import { decryptKey, encryptKey, last4, looksLikeKeyFor } from "./vault.ts";
 import { errBody, type Caller, type Deps } from "./converse.ts";
 import { ProviderError } from "./provider.ts";
 import type { ErrorBody } from "./schemas.ts";
@@ -54,6 +55,39 @@ export async function startSession(deps: Deps, c: Caller, courseId: string): Pro
 async function ownSession(deps: Deps, c: Caller, id: string) {
   const s = await deps.store.getSession(id);
   return s && s.userId === c.userId ? s : null;
+}
+
+// Warm-up: write the course's cached prompt prefix (rules + whole textbook + tool list) with a 1-token call, so the student's first real question reads it
+// from the cache instead of paying to re-load ~100K tokens. Best effort: any failure is ignored. Not metered per student (a few cents of cache writes at most).
+const warmAt = new Map<string, number>();
+export async function warm(deps: Deps, c: Caller, sessionId: string): Promise<Result> {
+  try {
+    const s = await ownSession(deps, c, sessionId);
+    if (!s || s.state === "ended") return ok({ warmed: false });
+    const key = `${c.userId}:${s.courseId}`, nowMs = Date.now();
+    if ((warmAt.get(key) ?? 0) > nowMs - 120_000) return ok({ warmed: false, reason: "recent" });
+    if (warmAt.size > 5000) warmAt.clear();
+    warmAt.set(key, nowMs);
+    const a = await deps.store.getCourseAccess(c.userId, s.courseId, new Date());
+    if (!a.allowed || (!a.settings.enabled && !a.isStaff)) return ok({ warmed: false });
+    const stored = await deps.store.getStoredKey(a.ownerId);
+    if (!stored || (stored.provider && stored.provider !== "anthropic") || !deps.content.fullText) return ok({ warmed: false });
+    const book = await Promise.race([deps.content.fullText(s.courseId), new Promise<string>((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000))]).catch(() => "");
+    if (!book) return ok({ warmed: false });
+    const apiKey = await decryptKey(stored.ciphertext, stored.iv, a.ownerId, deps.kek);
+    const allowed = MODELS.allowed as readonly string[];
+    const model = a.settings.model && allowed.includes(a.settings.model) ? a.settings.model : stored.model && allowed.includes(stored.model) ? stored.model : MODELS.default;
+    const reviewOn = a.settings.reviewEnabled === true && !!deps.store.reviewList;
+    const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 30_000);
+    let cw = 0, cr = 0;
+    try {
+      for await (const ev of deps.provider.stream({ apiKey, model, system: buildSystem({ textbook: book, courseTitle: a.title, term: a.term, directives: "", retrieved: "" }), messages: [{ role: "user", content: "Hello." }], tools: toolDefinitionsForModel({ review: reviewOn }), maxTokens: 1, signal: ac.signal, baseURL: deps.baseURL ?? undefined, provider: stored.provider })) {
+        if (ev.type === "end") { cw = ev.usage.cacheWrite; cr = ev.usage.cacheRead; break; }
+      }
+    } finally { clearTimeout(timer); }
+    deps.log("info", "warm", { session_id: s.id, course_id: s.courseId, cache_read_tokens: cr, cache_write_tokens: cw });
+    return ok({ warmed: true });
+  } catch { return ok({ warmed: false }); }
 }
 
 export async function interrupt(deps: Deps, c: Caller, sessionId: string, clientTurnId: string, spokenChars: number | null): Promise<Result> {

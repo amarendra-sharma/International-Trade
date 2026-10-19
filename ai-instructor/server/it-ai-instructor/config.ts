@@ -52,7 +52,7 @@ export const LIMITS = {
   maxBodyBytes: 16 * 1024,            // whole request body
   maxTextChars: 2000,                 // one student utterance (~ 2-3 minutes of speech)
   maxContextFieldChars: 200,
-  maxReplyTokens: 1500,               // spoken answers stay short, but a graph tool call alone can need ~600 tokens, so leave room for the call AND the explanation
+  maxReplyTokens: 2200,               // spoken answers stay short, but a graph tool call alone can need ~600 tokens, so leave room for the call AND the explanation
   maxHistoryTokensEst: 6000,          // older turns are dropped beyond this (estimated, chars/3.5)
   maxToolIterations: 4,
   maxToolOutputChars: 5000,

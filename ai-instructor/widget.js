@@ -102,7 +102,7 @@ function init() {
         while (mode.options.length > 1) mode.remove(1);
         (j.teaching_modes || []).filter((m) => m.enabled).forEach((m) => mode.appendChild(Object.assign(el('option', null, m.label), { value: m.id })));
       },
-      onVisual: (spec) => { const host = current; if (host) loadKatex().then((k) => { katexReady = true; mountVisual(spec, host, k); }); },   // host captured now: KaTeX may finish loading after the turn ends
+      onVisual: (spec) => { const host = current, tv = talk && talk.visualHost; if (host || tv) loadKatex().then((k) => { katexReady = true; if (tv) mountVisual(spec, tv, k); if (host) mountVisual(spec, host, k); }); },   // in Talk mode the graph also appears inside the Talk window, where the student is looking   // host captured now: KaTeX may finish loading after the turn ends
     });
   };
   let current = null;   // the assistant bubble currently receiving text (visuals attach under it)
@@ -136,7 +136,10 @@ function init() {
     };
     try {
       const m = await import('./talk/talk.js');
-      talk = m.openTalk({ backend, getMode: () => mode.value || undefined, baseUrl: CONFIG.talkBase, hooks, onClose: () => { talk = null; current = null; talkBtn.focus(); } });
+      let beats = 0, keep = null;
+      talk = m.openTalk({ backend, getMode: () => mode.value || undefined, baseUrl: CONFIG.talkBase, hooks, onClose: () => { talk = null; current = null; if (keep) clearInterval(keep); talkBtn.focus(); } });
+      backend.warm();                                                       // pre-load the course prompt now, so the first question is answered quickly
+      keep = setInterval(() => { if (document.visibilityState === 'visible' && ++beats <= 8) backend.warm(); }, 240000);   // the model's short-term memory lasts 5 minutes; refresh it while Talk is open
     } catch (e) { say('aiw-err', 'Talk mode could not start on this device. You can keep using the text chat.'); }
     finally { talkBtn.disabled = false; }
   });
