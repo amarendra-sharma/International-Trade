@@ -183,7 +183,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
 
     // ---- model loop with allowlisted tools -------------------------------------------------------------------------------------
     let stopReason = "end_turn";
-    let visualShown = false, truncatedOnce = false;
+    let visualShown = false, truncatedOnce = false, noTools = false;
     let retryLocked = false;      // set once this iteration has streamed text to the student: retrying would repeat it
     for (let iter = 0; iter <= LIMITS.maxToolIterations; iter++) {
       retryLocked = false;
@@ -192,7 +192,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         const attemptAc = new AbortController();
         const relay = () => attemptAc.abort(ac.signal.reason);
         if (ac.signal.aborted) relay(); else ac.signal.addEventListener("abort", relay, { once: true });
-        const it = deps.provider.stream({ apiKey, model: chosenModel, system, messages, tools: iter < LIMITS.maxToolIterations ? toolDefinitionsForModel({ review: reviewOn }) : [], maxTokens: LIMITS.maxReplyTokens, signal: attemptAc.signal, baseURL: providerBase ?? undefined, provider: stored.provider })[Symbol.asyncIterator]();
+        const it = deps.provider.stream({ apiKey, model: chosenModel, system, messages, tools: iter < LIMITS.maxToolIterations && !noTools ? toolDefinitionsForModel({ review: reviewOn }) : [], maxTokens: LIMITS.maxReplyTokens, signal: attemptAc.signal, baseURL: providerBase ?? undefined, provider: stored.provider })[Symbol.asyncIterator]();
         let first = true;
         const pull = async () => {
           let timer: number | undefined;
@@ -230,7 +230,14 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         log("warn", "reply_truncated", { turn_id: turnId });
         const said = final.content.filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text").map((b) => b.text).join("").trim();
         if (said) messages.push({ role: "assistant", content: said });
-        messages.push({ role: "user", content: "(automatic note) Your last reply was cut off before it finished, so nothing was drawn. If you were drawing a graph, call show_graph again now with at most 10 points per curve and coordinates rounded to one decimal, then say one short sentence about it. Do not repeat what you already said." });
+        messages.push({ role: "user", content: "(automatic note) Your last reply was cut off before it finished, so nothing was drawn. If you were drawing a graph, call show_graph again now as small as possible: give each curve as a short formula (expr, or x_expr and y_expr, with from and to) or at most 6 points, at most 2 curves, no notes, then say one short sentence about it. Do not repeat what you already said." });
+        continue;
+      }
+      // Cut off a second time while still trying to draw: stop offering tools and make sure the student gets a spoken answer.
+      if (final.stopReason === "max_tokens" && !visualShown && truncatedOnce && !noTools && !assistantText.trim() && iter < LIMITS.maxToolIterations) {
+        noTools = true;
+        log("warn", "reply_truncated_twice", { turn_id: turnId });
+        messages.push({ role: "user", content: "(automatic note) The drawing could not be completed. Do not draw anything now. Answer the student's question in words only, in at most 8 short spoken sentences, and say you can try the picture again if they ask." });
         continue;
       }
       if (final.stopReason !== "tool_use" || calls.length === 0) break;
