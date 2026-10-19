@@ -131,7 +131,7 @@
           var batch=[];
           while(i<rows.length&&batch.length<25&&JSON.stringify(batch.concat([rows[i]])).length<11000){batch.push(rows[i]);i++}
           if(!batch.length){batch.push(rows[i]);i++}
-          await call({action:'ingest_materials',course_id:cid,source_id:sid,title:meta.title,kind:meta.kind,replace:first,chunks:batch});
+          await call({action:'ingest_materials',course_id:cid,source_id:sid,title:meta.title,kind:meta.kind,replace:first,chunks:batch.map(function(c){var o=Object.assign({},c);delete o.source_id;return o})});
           first=false;done+=batch.length;say('matmsg','Uploaded '+done+' of '+total+'...');
         }
       }
