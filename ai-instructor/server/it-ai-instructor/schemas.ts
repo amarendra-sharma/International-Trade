@@ -77,7 +77,7 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
     type: "object", additionalProperties: false, required: ["action", "course_id", "source_id", "title", "kind", "chunks"],
     properties: {
       action: { type: "string", enum: ["ingest_materials"] }, course_id: uuid, source_id: { type: "string", pattern: "^it-[a-z0-9-]{2,30}$" }, title: { type: "string", minLength: 1, maxLength: 160 },
-      kind: { type: "string", enum: ["textbook", "slides", "problems", "notes", "other"] }, replace: { type: "boolean" },
+      kind: { type: "string", enum: ["textbook", "lecture_notes", "lesson", "approved_material"] }, replace: { type: "boolean" },
       chunks: { type: "array", minItems: 1, maxItems: 25, items: { type: "object", additionalProperties: false, required: ["chunk_key", "source_key", "chapter", "section", "heading", "kind", "ord", "pos", "title", "body"], properties: {
         chunk_key: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{1,40}:[a-z0-9][a-z0-9._#-]{0,30}$" }, source_key: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{1,40}:[a-z0-9][a-z0-9._#-]{0,30}$" },
         chapter: { type: "integer", minimum: 0, maximum: 200 }, section: { type: "string", minLength: 1, maxLength: 30 }, heading: { type: "string", minLength: 1, maxLength: 200 },

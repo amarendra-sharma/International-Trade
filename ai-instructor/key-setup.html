@@ -116,7 +116,7 @@
     }catch(e){box.textContent='';say('reqmsg',e.message,'bad')}
   }
 
-  var SRC={'it-slides':{title:'Appleyard 9e lecture slides',kind:'slides'},'it-problems':{title:'Practice problem set (questions only)',kind:'problems'}};
+  var SRC={'it-slides':{title:'Appleyard 9e lecture slides',kind:'lecture_notes'},'it-problems':{title:'Practice problem set (questions only)',kind:'approved_material'}};
   $('matup').onclick=async function(){
     var cid=$('cid').value.trim(),f=$('matfile').files[0];
     if(!cid) return say('matmsg','Enter the course ID in Course settings first.','bad');
@@ -126,7 +126,7 @@
       all.forEach(function(c){(by[c.source_id]=by[c.source_id]||[]).push(c)});
       var done=0,total=all.length;
       for(var sid of Object.keys(by)){
-        var meta=SRC[sid]||{title:sid,kind:'other'},rows=by[sid],first=true,i=0;
+        var meta=SRC[sid]||{title:sid,kind:'approved_material'},rows=by[sid],first=true,i=0;
         while(i<rows.length){
           var batch=[];
           while(i<rows.length&&batch.length<25&&JSON.stringify(batch.concat([rows[i]])).length<11000){batch.push(rows[i]);i++}
