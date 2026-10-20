@@ -54,13 +54,17 @@ export function classifyAnthropicError(err: unknown, signal?: AbortSignal): Prov
   return new ProviderError("unknown", status, null, "provider error");
 }
 
+// Claude's newer models think silently by default before answering (adaptive thinking). For a live tutor that is 10-30 seconds of dead air, and the thinking is billed
+// as output. Turn it off; the teaching quality comes from the prompt, the course text and the tools.
+const ANTHROPIC_NO_THINKING = { thinking: { type: "disabled" } } as never;
+
 export const anthropicProvider: LlmProvider = {
   async *stream(req: LlmRequest) {
     const client = new Anthropic({ apiKey: req.apiKey, maxRetries: 0, baseURL: req.baseURL });
     const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     try {
       const stream = client.messages.stream({
-        model: req.model, max_tokens: req.maxTokens, system: req.system, messages: req.messages as never, ...(req.tools.length ? { tools: req.tools as never } : {}),
+        model: req.model, max_tokens: req.maxTokens, ...ANTHROPIC_NO_THINKING, system: req.system, messages: req.messages as never, ...(req.tools.length ? { tools: req.tools as never } : {}),
       }, { signal: req.signal });
       let stopReason = "end_turn";
       for await (const ev of stream) {

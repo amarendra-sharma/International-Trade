@@ -34,12 +34,14 @@ export type Logger = ReturnType<typeof makeLogger>;
 // level goes through a token bucket, and a periodic "log_dropped" line says how many were skipped. Authoritative per-turn metering lives
 // in the it_ai_usage table, not in logs.
 export interface SampleOptions { infoSampleRate: number; perSecond: number; burst: number; now?: () => number; rand?: () => number; summaryEveryMs?: number }
+// One line per turn carrying the timings: always kept, so latency can be measured from the logs.
+const ALWAYS_LOGGED = new Set(["turn_done"]);
 export function makeSampledLogger(sink: Sink, o: SampleOptions): Logger {
   const base = makeLogger(sink), now = o.now ?? Date.now, rand = o.rand ?? Math.random, every = o.summaryEveryMs ?? 10_000;
   let tokens = o.burst, last = now(), dropped = 0, lastSummary = now();
   return (level, event, fields = {}) => {
     const t = now(); tokens = Math.min(o.burst, tokens + ((t - last) / 1000) * o.perSecond); last = t;
-    const sampledOut = level === "info" && rand() >= o.infoSampleRate;
+    const sampledOut = level === "info" && !ALWAYS_LOGGED.has(event) && rand() >= o.infoSampleRate;
     if (sampledOut || tokens < 1) { dropped++; }
     else { tokens -= 1; base(level, event, fields); }
     if (dropped > 0 && t - lastSummary >= every && tokens >= 1) { tokens -= 1; base("warn", "log_dropped", { count: dropped, window: Math.round((t - lastSummary) / 1000) }); dropped = 0; lastSummary = t; }
