@@ -10,14 +10,16 @@ import { wrapMaterial } from "./prompt.ts";
 import { assessCoverage, selectPassages } from "./content.ts";
 import type { ContentRepo, CourseSettings, ReviewReason, Store } from "./store.ts";
 import * as E from "./econ.ts";
-import { equationSpec, graphSpec, type VisualSpec } from "./visuals.ts";
+import { equationSpec, figureSpec, graphSpec, type VisualSpec } from "./visuals.ts";
+import { figureIndex } from "./figures.ts";
+import { hasFigures } from "./config.ts";
 import { masteryEstimate } from "./teaching.ts";
 
 export interface ToolContext {
   store: Store; content: ContentRepo; userId: string; courseId: string; sessionId: string; turnId: string;
   chapter?: number | null; settings?: CourseSettings; solutionGranted?: boolean; emitVisual?: (v: VisualSpec) => void;
 }
-interface ToolDef { name: string; description: string; input: Schema; review?: true; run: (input: any, ctx: ToolContext, toolUseId: string) => Promise<Record<string, unknown>> }
+interface ToolDef { name: string; description: string; input: Schema; review?: true; figures?: true; run: (input: any, ctx: ToolContext, toolUseId: string) => Promise<Record<string, unknown>> }
 
 const text = (max: number, min = 1): Schema => ({ type: "string", minLength: min, maxLength: max });
 const num: Schema = { type: "number", minimum: -1e9, maximum: 1e9 };
@@ -140,6 +142,19 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "show_figure",
+    figures: true,
+    description: "Put the TEXTBOOK'S OWN figure on the whiteboard, exactly as the book draws it, revealed step by step. PREFER THIS over show_graph whenever the book has a figure for what you are explaining (offer curves, production frontiers, tariffs, Heckscher-Ohlin, and so on): the student then sees the same picture as in the text. Give the figure number. Use show_graph only for a graph the book does not have (for example a specific numeric example the student asks about). Say one short sentence aloud BEFORE calling this, then narrate the steps. Available figures (number, title): " + figureIndex(),
+    input: { type: "object", additionalProperties: false, required: ["figure"], properties: { figure: text(40) } },
+    async run(i, c) {
+      try {
+        const v = figureSpec(i.figure); c.emitVisual?.(v);
+        const steps = v.panels.flatMap((p) => p.steps.map((s) => s.label));
+        return { shown: true, figure: "Figure " + v.num + " - " + v.title, book_caption: v.caption, whiteboard: "The board reveals ONE step each time you start a new sentence, highlighting it while you talk. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in exactly that order, one or two short sentences per step (the first step is the axes), using the book_caption as the book's own explanation. Do not describe features that are not in the caption or the steps." };
+      } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+    },
+  },
+  {
     name: "create_practice_question",
     description: "Create an UNGRADED practice question for this student. Provide the answer and up to three graduated hints; the student never sees the answer until they attempt it. Pass source_id (a section such as it-textbook:3.2) when the question comes from a retrieved section. Does not affect any grade.",
     input: {
@@ -238,7 +253,7 @@ export const TOOLS: ToolDef[] = [
 ];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
-export const toolDefinitionsForModel = (opts: { review?: boolean } = {}) => TOOLS.filter((t) => !t.review || opts.review === true).map((t) => ({ name: t.name, description: t.description, input_schema: t.input as unknown as Record<string, unknown> }));
+export const toolDefinitionsForModel = (opts: { review?: boolean; figures?: boolean } = {}) => TOOLS.filter((t) => (!t.review || opts.review === true) && (!t.figures || opts.figures === true)).map((t) => ({ name: t.name, description: t.description, input_schema: t.input as unknown as Record<string, unknown> }));
 
 export type ToolOutcome = { ok: true; content: string } | { ok: false; reason: "unknown_tool" | "bad_input" | "failed"; content: string };
 
@@ -249,6 +264,7 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext,
   try { input = validate(def.input, rawInput ?? {}); } catch (e) {
     return { ok: false, reason: "bad_input", content: JSON.stringify({ error: `Invalid tool input: ${e instanceof ValidationError ? e.message : "bad input"}` }) };
   }
+  if (def.figures && !hasFigures(ctx.courseId)) return { ok: false, reason: "unknown_tool", content: JSON.stringify({ error: "There are no textbook figures for this course." }) };
   try {
     const out = await def.run(input, ctx, toolUseId);
     let s = JSON.stringify(out);

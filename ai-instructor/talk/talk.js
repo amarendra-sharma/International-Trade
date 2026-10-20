@@ -4,11 +4,11 @@
 //     (downloaded once, about 90 MB, then cached), or - as a fallback the student can choose - a voice built into the device (local-voice.js).
 //   - The answers come from the same secure backend as the text chat (the widget's own backend object), so limits, privacy and the
 //     course rules are identical. Everything rendered here uses textContent.
-import { createInstructor, InstructorStateMachine } from './index.js?v=20261019d';
-import { createVoice } from './voice/index.js?v=20261019d';
-import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js?v=20261019d';
-import { InstructorAudio } from './audio.js?v=20261019d';
-import { Whiteboard } from './whiteboard.js?v=20261019d';
+import { createInstructor, InstructorStateMachine } from './index.js?v=20261020a';
+import { createVoice } from './voice/index.js?v=20261020a';
+import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js?v=20261020a';
+import { InstructorAudio } from './audio.js?v=20261020a';
+import { Whiteboard } from './whiteboard.js?v=20261020a';
 
 var CSS = [
 '.mnai-talk{position:fixed;inset:0;z-index:99995;background:rgba(5,10,18,.86);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}',
@@ -50,7 +50,7 @@ export function openTalk(o) {
     onEvent: function (fn) { this._h.push(fn); if (piper) piper.onEvent(fn); },
     load: function () {
       var self = this;
-      if (!this._p) this._p = import(/* @vite-ignore */ naturalBase + 'piper-tts.bundle.js?v=20261019d').then(function (m) {
+      if (!this._p) this._p = import(/* @vite-ignore */ naturalBase + 'piper-tts.bundle.js?v=20261020a').then(function (m) {
         piper = new m.PiperTts({ base: naturalBase, lengthScale: 1 / (speed || 0.9) }); self._h.forEach(function (h) { piper.onEvent(h); }); return piper.load();
       }).then(function (i) { self.ready = true; return i; });
       return this._p;
@@ -82,7 +82,7 @@ export function openTalk(o) {
     approvedOrigins: [base], allowRelativeDev: !!o.dev,
     audio: audio,
     lipsync: { jawMax: /\.vrm(\?|$)/i.test(o.modelFile || '') ? 0.95 : 0.4 },        // the old placeholder's jaw looked stretched past ~40%
-    threeDepsUrl: new URL('three-deps.bundle.js?v=20261019d', base).href,
+    threeDepsUrl: new URL('three-deps.bundle.js?v=20261020a', base).href,
     privacyNote: o.privacyNote || 'AI-generated and can be wrong. Your voice is turned into text on your own device and the audio is discarded. The text of your questions is handled exactly like the typed chat.',
     onUserText: function (t) { getVoice().then(function (v) { v.submitText(t); }, fail); },
     onPushToTalk: function (down) { held = down; if (down) startTalking(); else stopTalking(); },

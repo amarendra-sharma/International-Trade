@@ -1,6 +1,7 @@
 // whiteboard.js - the instructor's blackboard. It sits between the instructor and the chat in Talk mode, draws what the server validated (a graph
 // spec or an equation spec) and reveals it ONE STEP AT A TIME, in step with what the instructor is saying: axes first, then each curve drawn on,
 // then each marked point. Every string is escaped and every number re-checked here; the model never supplies markup.
+import { buildFigure } from '../figure-render.js?v=20261020a';
 var CSS = [
 '.mnai-board{order:1;display:flex;flex-direction:column;min-width:0;background:#15302c;color:#f3f1e7;border:7px solid #7b5b3a;border-radius:12px;box-shadow:inset 0 0 40px rgba(0,0,0,.45),0 6px 20px rgba(0,0,0,.4);padding:8px 10px 10px}',
 '.mnai-board[hidden]{display:none}',
@@ -17,6 +18,7 @@ var CSS = [
 '.wb-lab{opacity:0;transition:opacity .5s ease 1.1s}.wb-step.on .wb-lab{opacity:1}',
 '.wb-pop circle{transform-box:fill-box;transform-origin:center;transform:scale(0);transition:transform .45s cubic-bezier(.3,1.7,.5,1) .35s}.wb-step.on .wb-pop circle{transform:scale(1)}',
 '.wb-guide{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .6s ease}.wb-step.on .wb-guide{stroke-dashoffset:0}',
+'.wb-figtitle{font:600 14px/1.3 system-ui,sans-serif;color:#ffd966;margin:2px 2px 6px}',
 '.wb-eq{opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease;font-size:1.25em;text-align:center;padding:6px 4px;overflow-x:auto}.wb-eq.on{opacity:1;transform:none}',
 '.wb-eq .eq-caption{font-size:.62em;color:#cfd8c6;margin-top:4px}',
 '@media (prefers-reduced-motion:reduce){.wb-step,.wb-draw,.wb-lab,.wb-pop circle,.wb-guide,.wb-eq{transition:none!important}}',
@@ -119,6 +121,15 @@ Whiteboard.prototype.add = function (spec, katex, baseline) {
       var cap = d.createElement('div'); cap.className = 'wb-cap'; cap.setAttribute('aria-live', 'polite');
       holder.querySelectorAll('[data-s]').forEach(function (n) { n._cap = cap; this.steps.push(n); }, this);
       this.body.appendChild(holder); this.body.appendChild(cap); ok = this.steps.length > base;
+    }
+  } else if (spec && spec.kind === 'figure') {
+    var fg = buildFigure(spec, d, ++this.uid, { animate: true });
+    if (fg) {
+      var fcap = d.createElement('div'); fcap.className = 'wb-cap'; fcap.setAttribute('aria-live', 'polite');
+      var ft = d.createElement('div'); ft.className = 'wb-figtitle'; ft.textContent = 'Figure ' + fg.num + ' \u2014 ' + fg.title;
+      this.body.appendChild(ft); fg.svgs.forEach(function (sv) { this.body.appendChild(sv); }, this);
+      fg.steps.forEach(function (n) { n._cap = fcap; this.steps.push(n); }, this);
+      this.body.appendChild(fcap); ok = true;
     }
   } else if (spec && spec.kind === 'equation' && typeof spec.tex === 'string' && spec.tex.length <= 300) {
     var box = d.createElement('div'); box.className = 'wb-eq';

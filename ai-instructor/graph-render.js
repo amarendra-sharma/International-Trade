@@ -1,6 +1,7 @@
 // graph-render.js - draws what the server validated: a graph spec (numbers and short labels) as an SVG string, and an equation spec with KaTeX.
 // The model never supplies markup. Every string is escaped here regardless, numbers are re-checked, and the result contains no scripts, links or
 // event handlers. KaTeX is vendored in web/vendor/katex and is called with trust:false, so \href, \url, \includegraphics etc. are inert.
+import { buildFigure } from './figure-render.js?v=20261020a';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fin = (v) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= 1e6;
 const COLORS = ['#1f5fbf', '#c2410c', '#15803d', '#7e22ce', '#b45309', '#0e7490'];
@@ -65,6 +66,12 @@ export function renderEquation(spec, el, katex) {
 export function mountVisual(spec, host, katex) {
   if (!spec || !host) return null; var d = host.ownerDocument, box = d.createElement('figure'); box.className = 'ai-visual';
   if (spec.kind === 'graph') { var svg = graphToSvg(spec); if (!svg) return null; box.innerHTML = svg; }   // svg is built only from escaped strings and checked numbers
+  else if (spec.kind === 'figure') {
+    var fg = buildFigure(spec, d, Math.floor(Math.random() * 1e6), { animate: false }); if (!fg) return null;
+    box.style.cssText = 'background:#0e1117;color:#d7deec;border-radius:8px;padding:8px 10px';
+    var t = d.createElement('div'); t.textContent = 'Figure ' + fg.num + ' \u2014 ' + fg.title; t.style.cssText = 'font:600 13px system-ui,sans-serif;color:#ffd966;margin-bottom:4px'; box.appendChild(t);
+    fg.svgs.forEach(function (sv) { sv.style.cssText += ';width:100%;height:auto;display:block'; box.appendChild(sv); });
+  }
   else if (spec.kind === 'equation') { if (!renderEquation(spec, box, katex)) return null; }
   else return null;
   host.appendChild(box); return box;

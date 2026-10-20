@@ -6,7 +6,7 @@
 //   {type:'speech-end', audio, durationMs, reason}   reason: 'silence' | 'max-length' | 'flush'
 //   {type:'misfire', durationMs}           speech shorter than minSpeechMs (dropped, not sent to ASR)
 //   {type:'barge-in', atMs}                only while setAssistantSpeaking(true): sustained speech
-import { concat } from './audio-utils.js?v=20261019d';
+import { concat } from './audio-utils.js?v=20261020a';
 
 export class VadSegmenter {
   constructor(opts) {

@@ -1,5 +1,5 @@
 // actions.ts - the non-streaming actions: sessions, interrupts, history, key and settings management.
-import { LIMITS, MODELS, PROVIDERS, isProviderId, resolveBaseURL } from "./config.ts";
+import { LIMITS, hasFigures, MODELS, PROVIDERS, isProviderId, resolveBaseURL } from "./config.ts";
 import { reviewSolutionsAllowed, toolDefinitionsForModel } from "./tools.ts";
 import { buildSystem } from "./prompt.ts";
 import { decryptKey, encryptKey, last4, looksLikeKeyFor } from "./vault.ts";
@@ -82,7 +82,7 @@ export async function warm(deps: Deps, c: Caller, sessionId: string): Promise<Re
     const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 30_000);
     let cw = 0, cr = 0;
     try {
-      for await (const ev of deps.provider.stream({ apiKey, model, system: buildSystem({ courseTitle: a.title, term: a.term, directives: "", retrieved: "" }), messages: [{ role: "user", content: "Hello." }], tools: toolDefinitionsForModel({ review: reviewOn }), maxTokens: 1, signal: ac.signal, baseURL: deps.baseURL ?? undefined, provider: stored.provider })) {
+      for await (const ev of deps.provider.stream({ apiKey, model, system: buildSystem({ courseTitle: a.title, term: a.term, directives: "", retrieved: "" }), messages: [{ role: "user", content: "Hello." }], tools: toolDefinitionsForModel({ review: reviewOn, figures: hasFigures(s.courseId) }), maxTokens: 1, signal: ac.signal, baseURL: deps.baseURL ?? undefined, provider: stored.provider })) {
         if (ev.type === "end") { cw = ev.usage.cacheWrite; cr = ev.usage.cacheRead; break; }
       }
     } finally { clearTimeout(timer); }

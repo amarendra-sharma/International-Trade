@@ -1,8 +1,8 @@
 // turn-controller.js - one conversational turn: student speech -> ASR -> backend (streamed) -> TTS -> playback.
 // Every async step re-checks that its turn is still current, so an interruption can never let an old answer
 // start playing. All dependencies are injected: ASR/TTS clients, the backend, the audio player, the state machine.
-import { SentenceSplitter, toSpeakable, isLikelyNoise } from './text-prep.js?v=20261019d';
-import { TurnMetrics } from './metrics.js?v=20261019d';
+import { SentenceSplitter, toSpeakable, isLikelyNoise } from './text-prep.js?v=20261020a';
+import { TurnMetrics } from './metrics.js?v=20261020a';
 
 export class VoiceTurnController {
   constructor(deps) {

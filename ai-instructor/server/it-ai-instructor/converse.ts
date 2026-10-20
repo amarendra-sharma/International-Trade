@@ -1,6 +1,6 @@
 // converse.ts - one student turn: authorise, reserve the turn atomically, stream Claude, run allowlisted tools,
 // persist exactly once. Pure orchestration over injected dependencies, so every failure path is unit-testable.
-import { LIMITS, LONG_PROMPT, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
+import { LIMITS, LONG_PROMPT, hasFigures, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
 import { sleep as realSleep, withRetry } from "./retry.ts";
 import { buildSystem } from "./prompt.ts";
 import { retrieveForTurn } from "./content.ts";
@@ -219,7 +219,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         const attemptAc = new AbortController();
         const relay = () => attemptAc.abort(ac.signal.reason);
         if (ac.signal.aborted) relay(); else ac.signal.addEventListener("abort", relay, { once: true });
-        const it = deps.provider.stream({ apiKey, model: chosenModel, system, messages, tools: iter < LIMITS.maxToolIterations && !noTools ? toolDefinitionsForModel({ review: reviewOn }) : [], maxTokens: LIMITS.maxReplyTokens, signal: attemptAc.signal, baseURL: providerBase ?? undefined, provider: stored.provider })[Symbol.asyncIterator]();
+        const it = deps.provider.stream({ apiKey, model: chosenModel, system, messages, tools: iter < LIMITS.maxToolIterations && !noTools ? toolDefinitionsForModel({ review: reviewOn, figures: hasFigures(session.courseId) }) : [], maxTokens: LIMITS.maxReplyTokens, signal: attemptAc.signal, baseURL: providerBase ?? undefined, provider: stored.provider })[Symbol.asyncIterator]();
         let first = true;
         const pull = async () => {
           let timer: number | undefined;

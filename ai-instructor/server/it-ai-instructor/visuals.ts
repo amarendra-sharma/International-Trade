@@ -1,6 +1,7 @@
 // visuals.ts - validation of what the instructor may ask the student's screen to draw. The model never sends HTML or SVG: only
 // numbers and short labels (graphs) or a TeX string (equations), which the client renders with its own trusted code.
 import { CalcError, evaluate } from "./econ.ts";
+import { lookupFigure } from "./figures.ts";
 
 export interface GraphSpec {
   kind: "graph"; title?: string; x_label: string; y_label: string; x_max?: number; y_max?: number;
@@ -8,7 +9,9 @@ export interface GraphSpec {
   markers: { x: number; y: number; label: string; note?: string }[];
 }
 export interface EquationSpec { kind: "equation"; tex: string; caption?: string }
-export type VisualSpec = GraphSpec | EquationSpec;
+/** One of the textbook's own figures. Panels hold the book's SVG pieces grouped into reveal steps; the client sanitises them before drawing. */
+export interface FigureSpec { kind: "figure"; num: string; title: string; caption: string; panels: { viewBox: string; steps: { label: string; svg: string }[] }[] }
+export type VisualSpec = GraphSpec | EquationSpec | FigureSpec;
 
 const clean = (s: unknown, n: number) => String(s ?? "").replace(/[\u0000-\u001f<>&"'`]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const LIM = 1e6;
@@ -96,4 +99,11 @@ export function equationSpec(i: { tex: string; caption?: string }): EquationSpec
   const spec: EquationSpec = { kind: "equation", tex };
   if (i.caption) spec.caption = clean(i.caption, 120);
   return spec;
+}
+
+/** The book's figure `q` as a spec for the whiteboard, or an error naming what is available. */
+export function figureSpec(q: string): FigureSpec {
+  const f = lookupFigure(q);
+  if (!f) throw new CalcError(`There is no redrawable textbook figure "${clean(q, 30)}". Check the figure numbers in the tool description, or draw a graph with show_graph.`);
+  return { kind: "figure", num: f.num, title: f.title, caption: f.caption, panels: f.panels };
 }
