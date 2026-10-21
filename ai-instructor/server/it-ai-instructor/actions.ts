@@ -7,7 +7,7 @@ import { errBody, keyOwnerOf, type Caller, type Deps } from "./converse.ts";
 import { ProviderError } from "./provider.ts";
 import type { ErrorBody } from "./schemas.ts";
 import { DEFAULT_CONTROL, isMode } from "./resilience.ts";
-import type { CourseSettings, IngestChunk, SessionMetrics } from "./store.ts";
+import type { CourseSettings, IngestChunk, ReviewKind, SessionMetrics } from "./store.ts";
 import { MODES, MODE_LABELS, effectiveMode, masteryEstimate, type Mode } from "./teaching.ts";
 
 export type Result = { status: number; body: unknown };
@@ -177,8 +177,9 @@ const settingsBody = (s: CourseSettings) => ({
   enabled: s.enabled, retention_days: s.retentionDays, student_daily_tokens: s.studentDailyTokens, course_monthly_usd: s.courseMonthlyUsd, model: s.model,
   ai_policy: s.aiPolicy, allow_worked_solutions: s.allowWorkedSolutions, block_during_assessments: s.blockDuringAssessments, learning_record_days: s.learningRecordDays, store_mastery: s.storeMastery,
   review_enabled: s.reviewEnabled, review_show_solutions: s.reviewShowSolutions, payer: s.payer,
+  scope_mode: s.scopeMode, use_textbook: s.useTextbook, review_kinds: s.reviewKinds,
 });
-export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform" }): Promise<Result> {
+export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform"; scope_mode?: "course_only" | "open"; use_textbook?: boolean; review_kinds?: ReviewKind[] }): Promise<Result> {
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change these settings.", false));
   if (p.payer !== undefined && (await deps.store.getRole(c.userId)) !== "admin") return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
@@ -188,7 +189,7 @@ export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { 
     ...(p.student_daily_tokens !== undefined && { studentDailyTokens: p.student_daily_tokens }), ...(p.course_monthly_usd !== undefined && { courseMonthlyUsd: p.course_monthly_usd }), ...(p.model !== undefined && { model: p.model }),
     ...(p.ai_policy !== undefined && { aiPolicy: p.ai_policy }), ...(p.allow_worked_solutions !== undefined && { allowWorkedSolutions: p.allow_worked_solutions }),
     ...(p.block_during_assessments !== undefined && { blockDuringAssessments: p.block_during_assessments }), ...(p.learning_record_days !== undefined && { learningRecordDays: p.learning_record_days }), ...(p.store_mastery !== undefined && { storeMastery: p.store_mastery }),
-    ...(p.payer !== undefined && { payer: p.payer }), ...(p.review_enabled !== undefined && { reviewEnabled: p.review_enabled }), ...(p.review_show_solutions !== undefined && { reviewShowSolutions: p.review_show_solutions }),
+    ...(p.payer !== undefined && { payer: p.payer }), ...(p.scope_mode !== undefined && { scopeMode: p.scope_mode }), ...(p.use_textbook !== undefined && { useTextbook: p.use_textbook }), ...(p.review_kinds !== undefined && { reviewKinds: p.review_kinds }), ...(p.review_enabled !== undefined && { reviewEnabled: p.review_enabled }), ...(p.review_show_solutions !== undefined && { reviewShowSolutions: p.review_show_solutions }),
   });
   deps.accessCache?.clear?.();     // settings changed: drop cached access so the new rules apply on the next turn
   deps.log("info", "settings_changed", { course_id: courseId, user: await deps.userHash(c.userId) });

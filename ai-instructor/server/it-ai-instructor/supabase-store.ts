@@ -1,6 +1,7 @@
 // supabase-store.ts - production Store: PostgREST reads/writes plus the it_ai_* functions, all via the service role.
 // No raw SQL is ever built from user input; every value travels as a typed parameter.
 import { LIMITS, MODELS, RETENTION } from "./config.ts";
+import { REVIEW_KINDS } from "./store.ts";
 import { assertTransition } from "./session-machine.ts";
 import type { SessionState } from "./schemas.ts";
 import type { IngestChunk, MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
@@ -13,6 +14,7 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   enabled: false, retentionDays: RETENTION.defaultDays, studentDailyTokens: LIMITS.defaultStudentDailyTokens, courseMonthlyUsd: LIMITS.defaultCourseMonthlyUsd, model: MODELS.default,
   aiPolicy: "full", allowWorkedSolutions: true, blockDuringAssessments: true, learningRecordDays: 180, storeMastery: true,
   reviewEnabled: false, reviewShowSolutions: true, payer: "instructor",
+  scopeMode: "open", useTextbook: true, reviewKinds: [...REVIEW_KINDS],
 };
 const POLICIES = ["full", "hints_only", "concepts_only"];
 export function mapSettings(s: Record<string, any>): CourseSettings {
@@ -21,6 +23,8 @@ export function mapSettings(s: Record<string, any>): CourseSettings {
     aiPolicy: POLICIES.includes(s.ai_policy) ? s.ai_policy : "full", allowWorkedSolutions: s.allow_worked_solutions !== false, blockDuringAssessments: s.block_during_assessments !== false,
     learningRecordDays: typeof s.learning_record_days === "number" ? s.learning_record_days : 180, storeMastery: s.store_mastery !== false,
     reviewEnabled: s.review_enabled === true, reviewShowSolutions: s.review_show_solutions !== false, payer: s.payer === "platform" ? "platform" : "instructor",
+    scopeMode: s.scope_mode === "course_only" ? "course_only" : "open", useTextbook: s.use_textbook !== false,
+    reviewKinds: Array.isArray(s.review_kinds) ? REVIEW_KINDS.filter((k) => s.review_kinds.includes(k)) : [...REVIEW_KINDS],
   };
 }
 const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
@@ -98,7 +102,7 @@ export class SupabaseStore implements Store {
   async setSettings(courseId: string, p: Partial<CourseSettings>): Promise<CourseSettings> {
     const cur = (await this.getCourseSettings(courseId));
     const next = { ...cur, ...p };
-    const { error } = await this.db.from(this.t("settings")).upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
+    const { error } = await this.db.from(this.t("settings")).upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), ...("scopeMode" in p || "useTextbook" in p || "reviewKinds" in p ? { scope_mode: next.scopeMode, use_textbook: next.useTextbook, review_kinds: next.reviewKinds } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
     if (error) throw new Error("db: settings save failed");
     return next;
   }

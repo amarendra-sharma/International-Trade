@@ -13,7 +13,11 @@ export interface CourseSettings {
   reviewEnabled: boolean; reviewShowSolutions: boolean;
   // who pays for the AI: the course owner's own key (default), or the platform's key (migration 006). Only a platform administrator can change it.
   payer: "instructor" | "platform";
+  // what students may use the AI for (migration 104, Micro only): "course_only" refuses anything outside the course subject; textbook explanations on/off; which kinds of graded work can be reviewed
+  scopeMode: "course_only" | "open"; useTextbook: boolean; reviewKinds: ReviewKind[];
 }
+export type ReviewKind = "exams" | "quizzes" | "assignments" | "arenas";
+export const REVIEW_KINDS: ReviewKind[] = ["exams", "quizzes", "assignments", "arenas"];
 export interface CourseAccess {
   allowed: boolean; reason?: "not_found" | "not_enrolled" | "inactive" | "expired" | "payment_required";
   isStaff: boolean; ownerId: string; title: string; term: string | null; settings: CourseSettings;

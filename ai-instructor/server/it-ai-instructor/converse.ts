@@ -2,11 +2,12 @@
 // persist exactly once. Pure orchestration over injected dependencies, so every failure path is unit-testable.
 import { matchFigure } from "./figmatch.ts";
 import { figureSpec } from "./visuals.ts";
-import { LIMITS, LONG_PROMPT, hasFigures, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
+import { LIMITS, LONG_PROMPT, courseSubject, hasFigures, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
 import { sleep as realSleep, withRetry } from "./retry.ts";
 import { buildSystem } from "./prompt.ts";
 import { retrieveForTurn } from "./content.ts";
 import { directives } from "./teaching.ts";
+import { DRAW_DIRECTIVE, drawCue, type DrawCue } from "./drawcue.ts";
 import { runTool, toolDefinitionsForModel } from "./tools.ts";
 import { decryptKey } from "./vault.ts";
 import { ProviderError, type ContentBlock, type LlmProvider, type Msg, type Usage } from "./provider.ts";
@@ -170,7 +171,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     // slow, independent steps start now and are awaited only when needed; the database reads, the key and the book all overlap
     // Every turn sends the table of contents plus only the chapters the question is about (voice: two, typed: up to three). The whole book is about
     // 110k tokens, which is slow and, on Haiku 5.5, is billed at five times the rate above 100k. Providers without prompt caching, or content without chapter data, keep the old path.
-    let visualShown = false, truncatedOnce = false, noTools = false, shownFig = "";
+    let visualShown = false, truncatedOnce = false, noTools = false, shownFig = "", forceDraw = false, forcedOnce = false;
     const voiceFast = !otherProvider && !!deps.content.bookData;
     const maxChapters = req.input_mode === "voice" ? 2 : 3, maxChars = req.input_mode === "voice" ? 70_000 : 100_000;
     const keyP = decryptKey(stored.ciphertext, stored.iv, keyOwnerOf(deps, access), deps.kek);
@@ -183,7 +184,8 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     dataP.catch(() => {});
     // ---- teaching directives (mode, hint-before-answer, instructor rules) and course retrieval, both decided here on the server ------
     const reviewOn = access.settings.reviewEnabled === true && !!store.reviewList;            // the review tools exist only when the course owner turned review on
-    const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn });
+    const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn, subject: courseSubject(session.courseId) });
+    const cue: DrawCue = !hasFigures(session.courseId) && !dir.flags.length && dir.mode !== "review" ? drawCue(req.text) : null;
     const hist = await store.listMessages(session.id);
     const prevUser = [...hist].reverse().find((m) => m.role === "user" && m.turnId !== turnId)?.content;
     const [apiKey, retrieval] = await Promise.all([keyP, retrieveForTurn(deps.content, { userId: caller.userId, courseId: session.courseId, chapter: req.context?.chapter ?? null }, req.text, { mode: dir.mode, topic: req.context?.topic, previousUser: prevUser })]);
@@ -211,7 +213,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       figDirective = `FIGURE ALREADY ON THE WHITEBOARD: the textbook's Figure ${spec.num} (${spec.title}) is already showing next to you. Do NOT call show_figure or show_graph for it. The board reveals one step each time you start a new sentence and highlights it while you talk. Steps in order: ${spec.panels.flatMap((x) => x.steps.map((s) => s.label)).map((x, n) => (n + 1) + ") " + x).join("; ")}. Do not announce or introduce the figure ("here is", "on your board", "before I start"); your FIRST sentence must already describe step 1 (the axes), then one or two short sentences per step in exactly that order, then what it means. The colours and solid/dashed styles in the step list are exact facts about the picture: never call a solid curve dashed or the reverse. Which curve is the original and which the shifted one comes ONLY from the book's explanation below; where it names a style or colour (for example "solid violet"), use exactly that, and where it does not, say "the solid purple curve" or "the dashed purple curve" by appearance without claiming which is which. The book's own explanation (use it, add nothing that contradicts it): ${spec.caption}`;
       visualShown = true; shownFig = spec.num; emit({ event: "visual", data: { ...spec, early: true } });
     }
-    const system = buildSystem({ noFigures: !hasFigures(session.courseId), studentName: access.studentName, textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, figDirective, req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
+    const system = buildSystem({ noFigures: !hasFigures(session.courseId), studentName: access.studentName, textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, figDirective, cue ? DRAW_DIRECTIVE[cue] : "", req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
     const messages: Msg[] = buildMessages(hist);
 
     // ---- deadlines: total turn time, and "superseded by a newer turn / ended elsewhere" ------------------------------------------
@@ -230,7 +232,9 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         const attemptAc = new AbortController();
         const relay = () => attemptAc.abort(ac.signal.reason);
         if (ac.signal.aborted) relay(); else ac.signal.addEventListener("abort", relay, { once: true });
-        const it = deps.provider.stream({ apiKey, model: chosenModel, system, messages, tools: iter < LIMITS.maxToolIterations && !noTools ? toolDefinitionsForModel({ review: reviewOn, figures: hasFigures(session.courseId) }) : [], maxTokens: LIMITS.maxReplyTokens, signal: attemptAc.signal, baseURL: providerBase ?? undefined, provider: stored.provider })[Symbol.asyncIterator]();
+        const useForce = forceDraw; forceDraw = false;
+        const allTools = iter < LIMITS.maxToolIterations && !noTools ? toolDefinitionsForModel({ review: reviewOn, figures: hasFigures(session.courseId) }) : [];
+        const it = deps.provider.stream({ apiKey, model: chosenModel, system, messages, tools: useForce ? allTools.filter((t) => t.name === "show_graph" || t.name === "show_consumer_choice") : allTools, ...(useForce ? { toolChoice: "any" as const } : {}), maxTokens: LIMITS.maxReplyTokens, signal: attemptAc.signal, baseURL: providerBase ?? undefined, provider: stored.provider })[Symbol.asyncIterator]();
         let first = true;
         const pull = async () => {
           let timer: number | undefined;
@@ -279,6 +283,16 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         noTools = true;
         log("warn", "reply_truncated_twice", { turn_id: turnId });
         messages.push({ role: "user", content: "(automatic note) The drawing could not be completed. Do not draw anything now. Answer the student's question in words only, in at most 8 short spoken sentences, and say you can try the picture again if they ask." });
+        continue;
+      }
+      // She was asked for a picture on a course that draws with tools, answered in words only: ask once more, this time requiring the drawing tool.
+      if (cue === "explicit" && calls.length === 0 && !visualShown && !forcedOnce && !noTools && final.stopReason === "end_turn" && iter < LIMITS.maxToolIterations) {
+        forcedOnce = true; forceDraw = true;
+        log("warn", "draw_forced", { turn_id: turnId });
+        const said = final.content.filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text").map((b) => b.text).join("").trim();
+        if (said) { messages.push({ role: "assistant", content: said }); }
+        messages.push({ role: "user", content: "(automatic note) The student asked for a picture and nothing was drawn. Call the drawing tool now (show_consumer_choice for budget lines and indifference curves, otherwise show_graph), then explain it in at most 4 short sentences without repeating what you already said." });
+        if (said) { assistantText += "\n\n"; emit({ event: "delta", data: { text: "\n\n" } }); }
         continue;
       }
       if (final.stopReason !== "tool_use" || calls.length === 0) break;

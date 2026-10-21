@@ -11,6 +11,7 @@ export interface Msg { role: "user" | "assistant"; content: string | ContentBloc
 export interface LlmRequest {
   apiKey: string; model: string; system: SystemBlock[]; messages: Msg[]; tools: { name: string; description: string; input_schema: Record<string, unknown> }[];
   maxTokens: number; signal: AbortSignal; baseURL?: string;
+  toolChoice?: "any";     // force a tool call (used once, to make sure a requested drawing is actually drawn)
   provider?: string;      // "anthropic" (default) or any other id: the request is then sent as OpenAI-compatible chat completions to baseURL
 }
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
@@ -64,7 +65,7 @@ export const anthropicProvider: LlmProvider = {
     const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     try {
       const stream = client.messages.stream({
-        model: req.model, max_tokens: req.maxTokens, ...ANTHROPIC_NO_THINKING, system: req.system, messages: req.messages as never, ...(req.tools.length ? { tools: req.tools as never } : {}),
+        model: req.model, max_tokens: req.maxTokens, ...ANTHROPIC_NO_THINKING, system: req.system, messages: req.messages as never, ...(req.tools.length ? { tools: req.tools as never, ...(req.toolChoice ? { tool_choice: { type: "any" } as never } : {}) } : {}),
       }, { signal: req.signal });
       let stopReason = "end_turn";
       for await (const ev of stream) {
@@ -120,7 +121,7 @@ export const openaiCompatProvider: LlmProvider = {
     const body = {
       model: req.model, stream: true, stream_options: { include_usage: true }, messages: toOpenAiMessages(req.system, req.messages),
       ...(req.provider === "openai" ? { max_completion_tokens: req.maxTokens } : { max_tokens: req.maxTokens }),
-      ...(req.tools.length ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } })) } : {}),
+      ...(req.tools.length ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } })), ...(req.toolChoice ? { tool_choice: "required" } : {}) } : {}),
     };
     let res: Response;
     try {
