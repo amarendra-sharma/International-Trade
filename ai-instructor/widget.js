@@ -102,7 +102,7 @@ function init() {
         while (mode.options.length > 1) mode.remove(1);
         (j.teaching_modes || []).filter((m) => m.enabled).forEach((m) => mode.appendChild(Object.assign(el('option', null, m.label), { value: m.id })));
       },
-      onVisual: (spec) => { const host = current, tk = talk; if (host || tk) loadKatex().then((k) => { katexReady = true; if (tk && tk.addVisual) tk.addVisual(spec, k); if (host) mountVisual(spec, host, k); }); },   // in Talk mode the drawing also goes to the whiteboard, which reveals it as the instructor speaks
+      onVisual: (spec) => { const host = current, tk = talk, base = tk && tk.pending ? tk.pending() : undefined; if (host || tk) loadKatex().then((k) => { katexReady = true; if (tk && tk.addVisual) tk.addVisual(spec, k, base); if (host) mountVisual(spec, host, k); }); },   // in Talk mode the drawing also goes to the whiteboard, which reveals it as the instructor speaks
     });
   };
   let current = null;   // the assistant bubble currently receiving text (visuals attach under it)
@@ -135,7 +135,7 @@ function init() {
       turnDone: () => { if (bubble && !bubble.textContent.trim() && !bubble.querySelector('.ai-visual')) bubble.remove(); bubble = null; current = null; },
     };
     try {
-      const m = await import('./talk/talk.js?v=20261021a');
+      const m = await import('./talk/talk.js?v=20261021b');
       let beats = 0, keep = null;
       talk = m.openTalk({ backend, getMode: () => mode.value || undefined, baseUrl: CONFIG.talkBase, hooks, onClose: () => { talk = null; current = null; if (keep) clearInterval(keep); talkBtn.focus(); } });
       backend.warm();                                                       // pre-load the course prompt now, so the first question is answered quickly

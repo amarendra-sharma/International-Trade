@@ -8,7 +8,7 @@ import { createInstructor, InstructorStateMachine } from './index.js?v=20261021a
 import { createVoice } from './voice/index.js?v=20261021a';
 import { LocalVoiceAudio, LocalTtsStandIn } from './local-voice.js?v=20261021a';
 import { InstructorAudio } from './audio.js?v=20261021a';
-import { Whiteboard } from './whiteboard.js?v=20261021a';
+import { Whiteboard } from './whiteboard.js?v=20261021b';
 
 var CSS = [
 '.mnai-talk{position:fixed;inset:0;z-index:99995;background:rgba(5,10,18,.86);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}',
@@ -101,7 +101,9 @@ export function openTalk(o) {
   audio.on('sentence', function (e) { board.onSentence(e.index); });
   audio.on('end', function () { board.finish(); });
   audio.on('stopped', function () { board.finish(); });
-  function addVisual(spec, katex) { return board.add(spec, katex, voice && voice.controller.pendingSentences ? voice.controller.pendingSentences() : 0); }
+  function pending() { return voice && voice.controller.pendingSentences ? voice.controller.pendingSentences() : 0; }
+  // `base` is how many sentences were queued when the drawing ARRIVED (the page loads maths support before drawing, which can take a moment); a drawing sent ahead of the answer starts from zero.
+  function addVisual(spec, katex, base) { return board.add(spec, katex, spec && spec.early ? 0 : (typeof base === 'number' ? base : pending())); }
 
   // Engine choice (natural female voice vs the device's own voice). Changing it re-opens Talk with the other engine.
   var engLab = el(doc, 'label', '', 'Voice type '), engSel = el(doc, 'select'); engSel.setAttribute('aria-label', 'Voice type');
@@ -205,5 +207,5 @@ export function openTalk(o) {
   closeBtn.addEventListener('click', close);
   scrim.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
   closeBtn.focus();
-  return { close: close, ready: inst.ready, addVisual: addVisual, get audio() { return audio; }, get instructor() { return inst; }, getVoice: getVoice };
+  return { close: close, ready: inst.ready, addVisual: addVisual, pending: pending, get audio() { return audio; }, get instructor() { return inst; }, getVoice: getVoice };
 }
