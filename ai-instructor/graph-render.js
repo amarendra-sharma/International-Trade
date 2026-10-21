@@ -2,6 +2,7 @@
 // The model never supplies markup. Every string is escaped here regardless, numbers are re-checked, and the result contains no scripts, links or
 // event handlers. KaTeX is vendored in web/vendor/katex and is called with trust:false, so \href, \url, \includegraphics etc. are inert.
 import { buildFigure } from './figure-render.js?v=20261021a';
+import { buildScan } from './scan-render.js?v=20261021c';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fin = (v) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= 1e6;
 const COLORS = ['#1f5fbf', '#c2410c', '#15803d', '#7e22ce', '#b45309', '#0e7490'];
@@ -65,6 +66,7 @@ export function renderEquation(spec, el, katex) {
 /** One entry point for the page: figure out the spec kind and mount it into `host`. Returns the element it added. */
 export function mountVisual(spec, host, katex) {
   if (!spec || !host) return null; var d = host.ownerDocument, box = d.createElement('figure'); box.className = 'ai-visual';
+  if (spec.kind === 'scan') { var sc = buildScan(spec, d, window.sb); if (!sc) return null; box.style.cssText = 'padding:0;background:transparent'; box.appendChild(sc); host.appendChild(box); return box; }   // the student's own graded paper exam
   if (spec.kind === 'graph') { var svg = graphToSvg(spec); if (!svg) return null; box.innerHTML = svg; }   // svg is built only from escaped strings and checked numbers
   else if (spec.kind === 'figure') {
     var fg = buildFigure(spec, d, Math.floor(Math.random() * 1e6), { animate: false }); if (!fg) return null;

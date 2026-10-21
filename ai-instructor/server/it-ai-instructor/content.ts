@@ -19,7 +19,8 @@ export interface BookData { full: string; toc: string; chapters: Map<number, str
 export class SupabaseContent implements ContentRepo {
   private book = new Map<string, { at: number; data: BookData }>();
   private loading = new Map<string, Promise<BookData>>();
-  constructor(private db: Admin) {}
+  constructor(private db: Admin, private prefix: string = "it_ai_") {}
+  private t(n: string) { return this.prefix + n; }
   invalidate() { this.book.clear(); this.loading.clear(); }
   /** Every textbook-kind source linked to the course, in reading order, as one block of text. Cached 5 minutes per instance. */
   async fullText(courseId: string): Promise<string> { return (await this.bookData(courseId)).full; }
@@ -32,19 +33,19 @@ export class SupabaseContent implements ContentRepo {
   }
   private async loadBook(courseId: string): Promise<BookData> {
     // one lookup returns the links and each source's kind together; if the join is unavailable, fall back to two plain lookups
-    const joined = await this.db.from("it_ai_course_sources").select("source_id,max_chapter,it_ai_sources(id,kind)").eq("course_id", courseId);
+    const joined = await this.db.from(this.t("course_sources")).select(`source_id,max_chapter,${this.t("sources")}(id,kind)`).eq("course_id", courseId);
     let links: { data: Record<string, any>[] | null; error: unknown }, books: string[];
     const empty: BookData = { full: "", toc: "", chapters: new Map() };
-    if (!joined.error && (joined.data ?? []).every((r: Record<string, any>) => "it_ai_sources" in r)) {
+    if (!joined.error && (joined.data ?? []).every((r: Record<string, any>) => this.t("sources") in r)) {
       links = joined;
-      books = (joined.data ?? []).filter((s: Record<string, any>) => { const x = Array.isArray(s.it_ai_sources) ? s.it_ai_sources[0] : s.it_ai_sources; return x && x.kind === "textbook"; }).map((s: Record<string, any>) => s.source_id as string);
+      books = (joined.data ?? []).filter((s: Record<string, any>) => { const j = s[this.t("sources")]; const x = Array.isArray(j) ? j[0] : j; return x && x.kind === "textbook"; }).map((s: Record<string, any>) => s.source_id as string);
       if (!(joined.data ?? []).length) return empty;
     } else {
-      links = await this.db.from("it_ai_course_sources").select("source_id,max_chapter").eq("course_id", courseId);
+      links = await this.db.from(this.t("course_sources")).select("source_id,max_chapter").eq("course_id", courseId);
       if (links.error) throw new Error("db: course sources failed");
       const ids = (links.data ?? []).map((l: Record<string, any>) => l.source_id as string);
       if (!ids.length) return empty;
-      const plain = await this.db.from("it_ai_sources").select("id,kind").in("id", ids);
+      const plain = await this.db.from(this.t("sources")).select("id,kind").in("id", ids);
       if (plain.error) throw new Error("db: sources failed");
       books = (plain.data ?? []).filter((s: Record<string, any>) => s.kind === "textbook").map((s: Record<string, any>) => s.id as string);
     }
@@ -53,7 +54,7 @@ export class SupabaseContent implements ContentRepo {
     for (const id of books) {
       const max = maxBy.get(id) ?? null; let last = "";
       for (let from = 0; ; from += 1000) {
-        const { data, error } = await this.db.from("it_ai_chunks").select("source_key,chapter,section,heading,kind,title,body").eq("source_id", id).order("chapter", { ascending: true }).order("pos", { ascending: true }).range(from, from + 999);
+        const { data, error } = await this.db.from(this.t("chunks")).select("source_key,chapter,section,heading,kind,title,body").eq("source_id", id).order("chapter", { ascending: true }).order("pos", { ascending: true }).range(from, from + 999);
         if (error) throw new Error("db: textbook read failed");
         for (const r of data ?? []) {
           if (max !== null && r.chapter > max) continue;
@@ -72,13 +73,13 @@ export class SupabaseContent implements ContentRepo {
     const { data, error } = await this.db.rpc(name, args); if (error) throw new Error(`db: ${name} failed`); return (data ?? []) as T[];
   }
   async search(s: ContentScope, query: string, limit: number): Promise<Passage[]> {
-    return (await this.rpc<Record<string, any>>("it_ai_search_chunks", { p_user: s.userId, p_course: s.courseId, p_query: query, p_chapter: s.chapter ?? null, p_limit: limit })).map(toPassage);
+    return (await this.rpc<Record<string, any>>(this.t("search_chunks"), { p_user: s.userId, p_course: s.courseId, p_query: query, p_chapter: s.chapter ?? null, p_limit: limit })).map(toPassage);
   }
   async getSection(s: ContentScope, sourceKey: string): Promise<Passage[]> {
-    return (await this.rpc<Record<string, any>>("it_ai_get_section", { p_user: s.userId, p_course: s.courseId, p_source_key: sourceKey })).map((r) => toPassage({ ...r, score: 1 }));
+    return (await this.rpc<Record<string, any>>(this.t("get_section"), { p_user: s.userId, p_course: s.courseId, p_source_key: sourceKey })).map((r) => toPassage({ ...r, score: 1 }));
   }
   async outline(s: ContentScope, chapter?: number): Promise<OutlineEntry[]> {
-    return (await this.rpc<Record<string, any>>("it_ai_outline", { p_user: s.userId, p_course: s.courseId, p_chapter: chapter ?? null })).map((r) => ({ chapter: r.chapter, section: r.section, sourceKey: r.source_key, heading: r.heading, kind: r.kind, chunks: r.chunks }));
+    return (await this.rpc<Record<string, any>>(this.t("outline"), { p_user: s.userId, p_course: s.courseId, p_chapter: chapter ?? null })).map((r) => ({ chapter: r.chapter, section: r.section, sourceKey: r.source_key, heading: r.heading, kind: r.kind, chunks: r.chunks }));
   }
 }
 

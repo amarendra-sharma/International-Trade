@@ -11,7 +11,9 @@ export interface GraphSpec {
 export interface EquationSpec { kind: "equation"; tex: string; caption?: string }
 /** One of the textbook's own figures. Panels hold the book's SVG pieces grouped into reveal steps; the client sanitises them before drawing. */
 export interface FigureSpec { kind: "figure"; num: string; title: string; caption: string; panels: { viewBox: string; steps: { label: string; svg: string }[] }[] }
-export type VisualSpec = GraphSpec | EquationSpec | FigureSpec;
+/** A graded paper (bubble-sheet) exam: the scanned pages (paths in the private paper-scans bucket, which the student's own browser downloads with the student's own session) beside the questions they missed. */
+export interface ScanSpec { kind: "scan"; title: string; score: number | null; max_score: number | null; paths: string[]; bucket: "paper-scans"; wrong: { q: string; your: string; correct?: string; earned?: number; points?: number }[]; total_questions: number }
+export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec;
 
 const clean = (s: unknown, n: number) => String(s ?? "").replace(/[\u0000-\u001f<>&"'`]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const LIM = 1e6;
@@ -106,4 +108,19 @@ export function figureSpec(q: string): FigureSpec {
   const f = lookupFigure(q);
   if (!f) throw new CalcError(`There is no redrawable textbook figure "${clean(q, 30)}". Check the figure numbers in the tool description, or draw a graph with show_graph.`);
   return { kind: "figure", num: f.num, title: f.title, caption: f.caption, panels: f.panels };
+}
+
+const SCAN_PATH = /^[A-Za-z0-9][A-Za-z0-9_\-./]{0,200}$/;
+const short = (v: unknown, n: number) => clean(v, n);
+/** Builds the whiteboard picture for a student's own graded paper exam from the database's review result. Paths must look like storage paths (no "..", no scheme); nothing else from the model is trusted. */
+export function scanSpec(a: { title: string; score: number | null; maxScore: number | null; paths: string[]; items: Record<string, unknown>[]; solutions: boolean }): ScanSpec | null {
+  const paths = a.paths.filter((p) => typeof p === "string" && SCAN_PATH.test(p) && !p.includes("..") && !p.startsWith("/")).slice(0, 12);
+  if (!paths.length) return null;
+  const wrong = a.items.filter((i) => i && (i.correct_flag === false || (typeof i.earned === "number" && typeof i.points === "number" && i.earned < i.points)))
+    .slice(0, 60).map((i) => ({
+      q: short(i.q, 8), your: short(i.your, 40) || "blank",
+      ...(a.solutions && i.correct !== undefined && i.correct !== null ? { correct: short(i.correct, 40) } : {}),
+      ...(typeof i.earned === "number" ? { earned: i.earned } : {}), ...(typeof i.points === "number" ? { points: i.points } : {}),
+    }));
+  return { kind: "scan", title: short(a.title, 120), score: a.score, max_score: a.maxScore, paths, bucket: "paper-scans", wrong, total_questions: a.items.length };
 }

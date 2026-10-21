@@ -68,7 +68,7 @@ async function render(host) {
   const my = ++token;
   host.textContent = '';
   const st = window.State || {};
-  if (st.isTA && st.role !== 'instructor' && st.role !== 'admin') {
+  if (st.isTA && st.role !== 'instructor' && st.role !== 'professor' && st.role !== 'admin') {
     host.appendChild(el('div', { class: 'card empty', text: 'Only the course instructor can change AI Instructor settings.' }));
     return;
   }
@@ -253,7 +253,7 @@ function install() {
   item.addEventListener('click', go);
   item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   // TAs who are not the owner never see it.
-  const sync = () => { const s = window.State || {}; item.classList.toggle('hidden', !!s.isTA && s.role !== 'instructor' && s.role !== 'admin'); };
+  const sync = () => { const s = window.State || {}; item.classList.toggle('hidden', !!s.isTA && s.role !== 'instructor' && s.role !== 'professor' && s.role !== 'admin'); };
   sync();
   new MutationObserver(sync).observe(group, { attributes: true, attributeFilter: ['class'] });
   const pick = document.getElementById('coursePick'); if (pick) pick.addEventListener('change', sync);

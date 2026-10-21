@@ -54,9 +54,11 @@ export interface ProgressSummary { chaptersRead: number[]; quizzesPassed: number
 // ---- graded-work review (migration 005). Every call is scoped to ONE student in ONE course and re-checks consent, deadlines and ownership in the database. ----
 export type ReviewReason = "not_enrolled" | "review_off" | "no_consent" | "assessment_in_progress" | "bad_ref" | "not_found" | "still_open" | "no_deadline";
 export interface ReviewConsent { granted: boolean; updatedAt: string | null; textVersion: number }
-export interface ReviewListItem { ref: string; kind: "exam" | "quiz" | "arena" | "assignment"; title: string; closesAt: string | null; submittedAt: string | null; items: number; reviewable: boolean; reason: "still_open" | "no_deadline" | null }
+export interface ReviewListItem { ref: string; kind: "exam" | "quiz" | "arena" | "assignment" | "paper"; title: string; closesAt: string | null; submittedAt: string | null; items: number; reviewable: boolean; reason: "still_open" | "no_deadline" | "review_off" | null }
 export type ReviewList = { allowed: true; items: ReviewListItem[] } | { allowed: false; reason: ReviewReason };
-export type ReviewDetail = { allowed: true; kind: string; title: string; closesAt: string | null; solutionsIncluded: boolean; items: Record<string, unknown>[] } | { allowed: false; reason: ReviewReason; closesAt?: string | null };
+/** A graded paper (bubble-sheet) exam: the scanned pages live in the private paper-scans bucket and are fetched by the STUDENT'S browser with their own session. */
+export interface ReviewScan { sheetId: string; paths: string[]; score: number | null; maxScore: number | null; mode: "score" | "answers" | "questions" }
+export type ReviewDetail = { allowed: true; kind: string; title: string; closesAt: string | null; solutionsIncluded: boolean; items: Record<string, unknown>[]; scan?: ReviewScan } | { allowed: false; reason: ReviewReason; closesAt?: string | null };
 export interface MeetingRequest { id: string; with: "ta" | "professor"; topic: string; note?: string | null; status: "open" | "done"; createdAt: string; student?: string }
 export interface ReviewRepo {
   reviewConsentGet(userId: string, courseId: string): Promise<ReviewConsent>;

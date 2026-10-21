@@ -2,6 +2,7 @@
 // spec or an equation spec) and reveals it ONE STEP AT A TIME, in step with what the instructor is saying: axes first, then each curve drawn on,
 // then each marked point. Every string is escaped and every number re-checked here; the model never supplies markup.
 import { buildFigure } from '../figure-render.js?v=20261021a';
+import { buildScan } from '../scan-render.js?v=20261021c';
 var CSS = [
 '.mnai-board{order:1;display:flex;flex-direction:column;min-width:0;background:#15302c;color:#f3f1e7;border:7px solid #7b5b3a;border-radius:12px;box-shadow:inset 0 0 40px rgba(0,0,0,.45),0 6px 20px rgba(0,0,0,.4);padding:8px 10px 10px}',
 '.mnai-board[hidden]{display:none}',
@@ -106,7 +107,7 @@ export function Whiteboard(doc, opts) {
 }
 Whiteboard.prototype._show = function (on) { this.el.hidden = !on; this.onVisibility(on); };
 /** New student question: wipe the board. */
-Whiteboard.prototype.reset = function () { if (this._fb) (this.doc.defaultView || window).clearTimeout(this._fb); this.body.textContent = ''; this.el.classList.remove('wb-live'); this.steps = []; this.next = 0; this.armed = false; this.baseline = 0; this._show(false); };
+Whiteboard.prototype.reset = function () { this.body.querySelectorAll('.mnai-scan').forEach(function (n) { if (n._revoke) n._revoke(); }); if (this._fb) (this.doc.defaultView || window).clearTimeout(this._fb); this.body.textContent = ''; this.el.classList.remove('wb-live'); this.steps = []; this.next = 0; this.armed = false; this.baseline = 0; this._show(false); };
 /**
  * A drawing arrived from the server. `baseline` is how many sentences had already been queued for speech (they come BEFORE the drawing);
  * the board then advances one step for each LATER sentence the instructor starts to say.
@@ -131,6 +132,9 @@ Whiteboard.prototype.add = function (spec, katex, baseline) {
       fg.steps.forEach(function (n) { n._cap = fcap; this.steps.push(n); }, this);
       this.body.appendChild(fcap); ok = true;
     }
+  } else if (spec && spec.kind === 'scan') {
+    // The student's own graded sheet: shown at once (it is not a step-by-step drawing) and kept until the next question.
+    var sc = buildScan(spec, d, (d.defaultView || window).sb); if (sc) { sc.classList.add('wb-scan'); this.body.appendChild(sc); ok = true; }
   } else if (spec && spec.kind === 'equation' && typeof spec.tex === 'string' && spec.tex.length <= 300) {
     var box = d.createElement('div'); box.className = 'wb-eq';
     try { if (!katex) throw new Error('no katex'); katex.render(spec.tex, box, { trust: false, throwOnError: true, displayMode: true, strict: 'error', maxSize: 20, maxExpand: 200 }); } catch (e) { box.textContent = spec.tex; }
