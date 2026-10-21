@@ -10,7 +10,7 @@ import { wrapMaterial } from "./prompt.ts";
 import { assessCoverage, selectPassages } from "./content.ts";
 import type { ContentRepo, CourseSettings, ReviewReason, Store } from "./store.ts";
 import * as E from "./econ.ts";
-import { equationSpec, figureSpec, graphSpec, scanSpec, type VisualSpec } from "./visuals.ts";
+import { consumerChoice, equationSpec, figureSpec, graphSpec, scanSpec, type VisualSpec } from "./visuals.ts";
 import { figureIndex } from "./figures.ts";
 import { hasFigures } from "./config.ts";
 import { masteryEstimate } from "./teaching.ts";
@@ -19,7 +19,7 @@ export interface ToolContext {
   store: Store; content: ContentRepo; userId: string; courseId: string; sessionId: string; turnId: string;
   chapter?: number | null; settings?: CourseSettings; solutionGranted?: boolean; emitVisual?: (v: VisualSpec) => void;
 }
-interface ToolDef { name: string; description: string; input: Schema; review?: true; figures?: true; run: (input: any, ctx: ToolContext, toolUseId: string) => Promise<Record<string, unknown>> }
+interface ToolDef { name: string; description: string; input: Schema; review?: true; figures?: true; noFigures?: true; run: (input: any, ctx: ToolContext, toolUseId: string) => Promise<Record<string, unknown>> }
 
 const text = (max: number, min = 1): Schema => ({ type: "string", minLength: min, maxLength: max });
 const num: Schema = { type: "number", minimum: -1e9, maximum: 1e9 };
@@ -139,6 +139,24 @@ export const TOOLS: ToolDef[] = [
       try { const v = graphSpec(i); c.emitVisual?.(v);
         const steps = ["the axes (" + v.x_label + " and " + v.y_label + ")", ...v.series.map((x) => "the curve '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...(v.markers ?? []).map((m) => "the point '" + m.label + "'" + (m.note ? " (" + m.note + ")" : ""))];
         return { shown: true, curves: v.series.length, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence, and highlights it while you talk. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in exactly that order, one or two short sentences per step (first sentence = the axes), then say what it means and what to notice." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+    },
+  },
+  {
+    name: "show_consumer_choice",
+    noFigures: true,
+    description: "Draw a consumer-choice picture EXACTLY: the budget line and the indifference curve that just touches it, with the best bundle marked. ALWAYS use this (never show_graph) for budget lines, indifference curves, utility maximisation, tangency, and what happens when income or a price changes. Give only the numbers of the problem; the server solves the optimum and draws a true tangency. utility: cobb_douglas (U = X^a * Y^(1-a); a is the exponent on X, default 0.5), perfect_substitutes (U = a*X + b*Y) or perfect_complements (fixed proportions, U = min(X/a, Y/b)). income, px, py are the income and the two prices. For a CHANGE (income rises, a price falls) also give `after` with only the values that change; the picture then shows the before situation dashed and the after situation solid with E0 and E1. Say one short sentence BEFORE calling, then use the result's numbers when you explain.",
+    input: { type: "object", additionalProperties: false, required: ["utility", "income", "px", "py"], properties: {
+      utility: { type: "string", enum: ["cobb_douglas", "perfect_substitutes", "perfect_complements"] }, a: { type: "number", minimum: 0.001, maximum: 1000 }, b: { type: "number", minimum: 0.001, maximum: 1000 },
+      income: { type: "number", minimum: 0.01, maximum: 1e7 }, px: { type: "number", minimum: 0.001, maximum: 1e6 }, py: { type: "number", minimum: 0.001, maximum: 1e6 },
+      x_label: text(40), y_label: text(40), title: text(80),
+      after: { type: "object", additionalProperties: false, properties: { income: { type: "number", minimum: 0.01, maximum: 1e7 }, px: { type: "number", minimum: 0.001, maximum: 1e6 }, py: { type: "number", minimum: 0.001, maximum: 1e6 } } },
+    } },
+    async run(i, c) {
+      try {
+        const r = consumerChoice(i); c.emitVisual?.(r.spec);
+        const steps = ["the axes (" + r.spec.x_label + " and " + r.spec.y_label + ")", ...r.spec.series.map((x) => "the curve '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...r.spec.markers.map((m) => "the point '" + m.label + "'" + (m.note ? " (" + m.note + ")" : ""))];
+        return { shown: true, optimum_before: r.before, ...(r.after ? { optimum_after: r.after } : {}), idea: r.note, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in that order, one short sentence each, using the exact numbers above, then say what it means." };
+      } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
   {
@@ -262,7 +280,7 @@ export const TOOLS: ToolDef[] = [
 ];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
-export const toolDefinitionsForModel = (opts: { review?: boolean; figures?: boolean } = {}) => TOOLS.filter((t) => (!t.review || opts.review === true) && (!t.figures || opts.figures === true)).map((t) => ({ name: t.name, description: t.description, input_schema: t.input as unknown as Record<string, unknown> }));
+export const toolDefinitionsForModel = (opts: { review?: boolean; figures?: boolean } = {}) => TOOLS.filter((t) => (!t.review || opts.review === true) && (!t.figures || opts.figures === true) && (!t.noFigures || opts.figures !== true)).map((t) => ({ name: t.name, description: t.description, input_schema: t.input as unknown as Record<string, unknown> }));
 
 export type ToolOutcome = { ok: true; content: string } | { ok: false; reason: "unknown_tool" | "bad_input" | "failed"; content: string };
 
@@ -273,6 +291,7 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext,
   try { input = validate(def.input, rawInput ?? {}); } catch (e) {
     return { ok: false, reason: "bad_input", content: JSON.stringify({ error: `Invalid tool input: ${e instanceof ValidationError ? e.message : "bad input"}` }) };
   }
+  if (def.noFigures && hasFigures(ctx.courseId)) return { ok: false, reason: "unknown_tool", content: JSON.stringify({ error: "That tool does not exist. You may only use the tools provided." }) };
   if (def.figures && !hasFigures(ctx.courseId)) return { ok: false, reason: "unknown_tool", content: JSON.stringify({ error: "There are no textbook figures for this course." }) };
   try {
     const out = await def.run(input, ctx, toolUseId);

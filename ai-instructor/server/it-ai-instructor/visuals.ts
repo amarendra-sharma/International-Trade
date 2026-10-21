@@ -91,6 +91,67 @@ export function graphSpec(i: GraphInput): GraphSpec {
   return spec;
 }
 
+
+// ---- consumer choice (budget line + indifference curve) --------------------------------------------------------------------------
+// Computed exactly on the server so the tangency is true by construction; the model gives only the numbers of the problem.
+export interface ChoiceSituation { income?: number; px?: number; py?: number }
+export interface ChoiceInput { utility: "cobb_douglas" | "perfect_substitutes" | "perfect_complements"; a?: number; b?: number; income: number; px: number; py: number; x_label?: string; y_label?: string; after?: ChoiceSituation; title?: string }
+export interface ChoiceResult { spec: GraphSpec; before: { x: number; y: number; utility: number }; after?: { x: number; y: number; utility: number }; note: string }
+const r3 = (v: number) => Math.round(v * 1e3) / 1e3;
+function optimum(u: ChoiceInput["utility"], a: number, b: number, m: number, px: number, py: number): { x: number; y: number; U: number; tie?: boolean } {
+  if (u === "cobb_douglas") { const x = a * m / px, y = (1 - a) * m / py; return { x, y, U: Math.pow(x, a) * Math.pow(y, 1 - a) }; }
+  if (u === "perfect_substitutes") {
+    const rx = a / px, ry = b / py;
+    if (Math.abs(rx - ry) < 1e-12 * Math.max(rx, ry)) return { x: m / (2 * px), y: m / (2 * py), U: a * m / (2 * px) + b * m / (2 * py), tie: true };
+    return rx > ry ? { x: m / px, y: 0, U: a * m / px } : { x: 0, y: m / py, U: b * m / py };
+  }
+  const t = m / (a * px + b * py); return { x: a * t, y: b * t, U: t };          // fixed proportions: U = min(x/a, y/b)
+}
+export function consumerChoice(i: ChoiceInput): ChoiceResult {
+  const kind = i.utility;
+  if (!["cobb_douglas", "perfect_substitutes", "perfect_complements"].includes(kind)) throw new CalcError("utility must be cobb_douglas, perfect_substitutes or perfect_complements");
+  let a = i.a, b = i.b;
+  if (kind === "cobb_douglas") { a = a ?? 0.5; if (!(a > 0 && a < 1)) throw new CalcError("for cobb_douglas, a is the exponent on good X in U = X^a * Y^(1-a) and must be between 0 and 1 (for example 0.5)"); b = 1 - a; }
+  else { a = a ?? 1; b = b ?? 1; if (!(a > 0 && b > 0)) throw new CalcError("a and b must be positive"); }
+  const sit = (s: ChoiceSituation | undefined) => ({ m: s?.income ?? i.income, px: s?.px ?? i.px, py: s?.py ?? i.py });
+  const sits = [sit(undefined), ...(i.after ? [sit(i.after)] : [])];
+  for (const s of sits) { num(s.m, "income"); num(s.px, "price of X"); num(s.py, "price of Y"); if (!(s.m > 0 && s.px > 0 && s.py > 0)) throw new CalcError("income and both prices must be positive"); }
+  const opts = sits.map((s) => ({ ...s, o: optimum(kind, a as number, b as number, s.m, s.px, s.py) }));
+  const xmax = r3(Math.max(...opts.map((s) => s.m / s.px)) * 1.2), ymax = r3(Math.max(...opts.map((s) => s.m / s.py)) * 1.2);
+  const series: GraphSpec["series"] = []; const markers: GraphSpec["markers"] = [];
+  const multi = opts.length > 1;
+  opts.forEach((s, k) => {
+    const tag = multi ? (k === 0 ? "before" : "after") : "";
+    const dashed = multi && k === 0;
+    series.push({ label: clean(`Budget line${tag ? " (" + tag + ")" : ""}`, 40), dashed, points: [[0, r3(s.m / s.py)], [r3(s.m / s.px), 0]], note: clean(`all bundles that cost exactly ${r3(s.m)}: X costs ${r3(s.px)}, Y costs ${r3(s.py)}`, 110) });
+    const pts: [number, number][] = [];
+    const U = s.o.U;
+    if (kind === "cobb_douglas") {
+      const A = a as number, lo = Math.max(1e-6, Math.pow(U / Math.pow(ymax, 1 - A), 1 / A));
+      for (let q = 0; q < 80; q++) { const x = lo + ((xmax - lo) * q) / 79; if (x <= 0 || x > xmax) continue; const y = Math.pow(U / Math.pow(x, A), 1 / (1 - A)); if (y >= 0 && y <= ymax) pts.push([r3(x), r3(y)]); }
+    } else if (kind === "perfect_substitutes") {
+      const A = a as number, B = b as number;
+      for (const x of [0, U / A]) { const y = (U - A * x) / B; pts.push([r3(x), r3(y)]); }
+      if (pts[0][1] > ymax) { pts[0] = [r3((U - B * ymax) / A), r3(ymax)]; }
+      if (pts[1][0] > xmax) { pts[1] = [r3(xmax), r3((U - A * xmax) / B)]; }
+    } else {
+      pts.push([r3(s.o.x), r3(ymax)], [r3(s.o.x), r3(s.o.y)], [r3(xmax), r3(s.o.y)]);
+    }
+    if (pts.length < 2) throw new CalcError("the indifference curve falls outside the drawn range; use more ordinary numbers");
+    series.push({ label: clean(`Indifference curve${tag ? " (" + tag + ")" : ""}`, 40), dashed, points: pts, note: clean(`bundles giving the same satisfaction (utility ${r3(U)})`, 110) });
+    markers.push({ x: r3(s.o.x), y: r3(s.o.y), label: multi ? (k === 0 ? "E0" : "E1") : "E", note: clean(`best affordable bundle: ${r3(s.o.x)} of X and ${r3(s.o.y)} of Y`, 110) });
+  });
+  const unit = (n: number) => r3(n);
+  const o0 = opts[0].o, o1 = opts[1]?.o;
+  const note = kind === "cobb_douglas"
+    ? "At the optimum the indifference curve just touches the budget line (tangency): the marginal rate of substitution equals the price ratio Px/Py = " + unit(opts[opts.length - 1].px / opts[opts.length - 1].py) + "."
+    : kind === "perfect_substitutes" ? "With perfect substitutes the indifference curves are straight lines, so the best bundle is a corner (all of the good with the larger utility per dollar), or any affordable mix on the budget line if the two are equal."
+    : "With perfect complements the indifference curves are L-shaped, so the best bundle sits at the corner where the goods are used in fixed proportions.";
+  const spec: GraphSpec = { kind: "graph", x_label: clean(i.x_label ?? "Good X", 40), y_label: clean(i.y_label ?? "Good Y", 40), x_max: xmax, y_max: ymax, series, markers };
+  spec.title = clean(i.title ?? (multi ? "Consumer choice: before and after" : "Consumer choice: budget line and indifference curve"), 80);
+  return { spec, before: { x: r3(o0.x), y: r3(o0.y), utility: r3(o0.U) }, ...(o1 ? { after: { x: r3(o1.x), y: r3(o1.y), utility: r3(o1.U) } } : {}), note };
+}
+
 // TeX that could reach outside math rendering is refused. The client also renders with KaTeX `trust: false`.
 const TEX_DENY = /\\(input|include|write|read|def|edef|gdef|let|newcommand|renewcommand|href|url|includegraphics|catcode|csname|expandafter|openin|openout|immediate|special|verb|style|class|htmlClass|htmlId|htmlStyle|htmlData)\b/i;
 export function equationSpec(i: { tex: string; caption?: string }): EquationSpec {
