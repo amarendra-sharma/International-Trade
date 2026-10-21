@@ -1,14 +1,14 @@
 // whiteboard.js - the instructor's blackboard. It sits between the instructor and the chat in Talk mode, draws what the server validated (a graph
 // spec or an equation spec) and reveals it ONE STEP AT A TIME, in step with what the instructor is saying: axes first, then each curve drawn on,
 // then each marked point. Every string is escaped and every number re-checked here; the model never supplies markup.
-import { buildFigure } from '../figure-render.js?v=20261020a';
+import { buildFigure } from '../figure-render.js?v=20261021a';
 var CSS = [
 '.mnai-board{order:1;display:flex;flex-direction:column;min-width:0;background:#15302c;color:#f3f1e7;border:7px solid #7b5b3a;border-radius:12px;box-shadow:inset 0 0 40px rgba(0,0,0,.45),0 6px 20px rgba(0,0,0,.4);padding:8px 10px 10px}',
 '.mnai-board[hidden]{display:none}',
 '.mnai-board-head{display:flex;align-items:center;gap:8px;font:600 13px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#cfd8c6;opacity:.85;margin-bottom:6px}',
 '.mnai-board-head span{flex:1}.mnai-board-head button{min-height:28px;border-radius:6px;border:1px solid #6f8a80;background:transparent;color:#cfd8c6;font:inherit;text-transform:none;letter-spacing:0;padding:0 8px;cursor:pointer}',
 '.mnai-board-body{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;align-items:stretch}',
-'.mnai-board svg{width:100%;height:auto;max-height:56vh;display:block}',
+'.mnai-board svg{width:100%;height:auto;max-height:78vh;display:block}',
 '.wb-step{opacity:0;transition:opacity .45s ease}.wb-step.on{opacity:1}.wb-live .wb-step.on:not(.cur){opacity:.55}',
 '.wb-step.cur .wb-line{stroke-width:5.2;filter:drop-shadow(0 0 5px currentColor)}.wb-line{transition:stroke-width .4s ease}',
 '.wb-step.cur .wb-lab{font-size:16px}.wb-step.cur .wb-pop circle{filter:drop-shadow(0 0 8px #fff5b0)}',
@@ -22,7 +22,7 @@ var CSS = [
 '.wb-eq{opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease;font-size:1.25em;text-align:center;padding:6px 4px;overflow-x:auto}.wb-eq.on{opacity:1;transform:none}',
 '.wb-eq .eq-caption{font-size:.62em;color:#cfd8c6;margin-top:4px}',
 '@media (prefers-reduced-motion:reduce){.wb-step,.wb-draw,.wb-lab,.wb-pop circle,.wb-guide,.wb-eq{transition:none!important}}',
-'@media (min-width:860px){.mnai.mnai-has-board{grid-template-columns:minmax(0,.8fr) minmax(0,1.35fr) minmax(0,.95fr)}.mnai.mnai-has-board>.mnai-stage{grid-column:1}.mnai.mnai-has-board>.mnai-board{grid-column:2;grid-row:1/span 4}.mnai.mnai-has-board>:not(.mnai-stage):not(.mnai-board){grid-column:3}}'
+'@media (min-width:860px){.mnai-talk-box:has(.mnai-has-board){width:min(1380px,100%)}.mnai.mnai-has-board{max-width:none;grid-template-columns:minmax(300px,.72fr) minmax(0,1.6fr);align-items:start}.mnai.mnai-has-board>.mnai-stage{grid-column:1;max-height:44vh;aspect-ratio:4/3}.mnai.mnai-has-board>.mnai-board{grid-column:2;grid-row:1/span 8;align-self:stretch;min-height:min(86vh,980px)}.mnai.mnai-has-board>:not(.mnai-stage):not(.mnai-board){grid-column:1}}'
 ].join('\n');
 var CHALK = ['#ffd966', '#8ed1fc', '#ff9e9e', '#b6f2a0', '#d9b3ff', '#ffc58a'];
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };

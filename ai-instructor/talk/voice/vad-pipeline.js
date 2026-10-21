@@ -1,6 +1,6 @@
 // vad-pipeline.js - feeds arbitrary-sized 16 kHz chunks through a VAD and a VadSegmenter.
 // Chunks are queued and processed strictly in order, so slow inference never reorders audio.
-import { SILERO_FRAME } from './silero.js?v=20261020a';
+import { SILERO_FRAME } from './silero.js?v=20261021a';
 
 export class VadPipeline {
   constructor(vad, segmenter, onEvent, opts) {

@@ -47,13 +47,14 @@ export class SupabaseStore implements Store {
     if (!course) return empty("not_found");
     const [srow, role, staff] = await Promise.all([
       this.one(this.db.from("it_ai_settings").select("*").eq("course_id", courseId).maybeSingle()),
-      this.getRole(userId),
+      this.one(this.db.from("it_profiles").select("role,full_name").eq("id", userId).maybeSingle()),
       this.one(this.db.from("it_course_staff").select("can_view,can_grade,can_edit").eq("course_id", courseId).eq("user_id", userId).maybeSingle()),
     ]);
     const settings: CourseSettings = srow ? mapSettings(srow) : DEFAULT_SETTINGS;
+    const studentName = firstName(role?.full_name);
     const platformKeyOwner = settings.payer === "platform" ? (await this.platformKeyOwner()) ?? undefined : undefined;
-    const base = { ownerId: course.owner_id as string, title: course.title as string, term: (course.term ?? null) as string | null, settings, ...(platformKeyOwner ? { platformKeyOwner } : {}) };
-    const isStaff = course.owner_id === userId || role === "admin" || !!(staff && (staff.can_view || staff.can_grade || staff.can_edit));
+    const base = { ...(studentName ? { studentName } : {}), ownerId: course.owner_id as string, title: course.title as string, term: (course.term ?? null) as string | null, settings, ...(platformKeyOwner ? { platformKeyOwner } : {}) };
+    const isStaff = course.owner_id === userId || role?.role === "admin" || !!(staff && (staff.can_view || staff.can_grade || staff.can_edit));
     if (isStaff) return { allowed: true, isStaff: true, ...base };
 
     const enr = await this.one(this.db.from("it_enrollments").select("status").eq("course_id", courseId).eq("student_id", userId).maybeSingle());
@@ -298,4 +299,11 @@ export class SupabaseStore implements Store {
   }
   async completeMeetingRequest(userId: string, courseId: string, id: string) { const d = await this.rpcJson("it_ai_review_request_done", { p_user: userId, p_course: courseId, p_id: id }); return d?.ok === true; }
 
+}
+
+/** A safe first name from a profile's full name: letters, marks, apostrophes and hyphens only, at most 30 characters; "" when nothing usable. */
+export function firstName(full: unknown): string {
+  const w = String(full ?? "").trim().split(/\s+/)[0] ?? "";
+  const n = w.replace(/[^\p{L}\p{M}'’-]/gu, "").slice(0, 30);
+  return n.length >= 2 ? n[0]!.toUpperCase() + n.slice(1) : "";
 }

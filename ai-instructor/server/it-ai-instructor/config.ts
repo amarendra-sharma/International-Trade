@@ -20,6 +20,8 @@ export const PRICES_USD_PER_MTOK: Record<string, { input: number; output: number
 
 // Courses whose textbook figures are in figures.ts, so the instructor can put the book's own drawing on the whiteboard (show_figure).
 // This is the pilot wiring (International Trade and its test course); a later release moves figures into the database, per course.
+/** The instructor's name, spoken and shown to students. One place to change it. */
+export const PERSONA = { name: "Asha" } as const;
 export const FIGURE_COURSES = new Set(["2d6832cf-28bf-4b5a-a351-56f3a1aa2252", "c13c165d-4ae6-4359-82a8-bac7e8323be0"]);
 export const hasFigures = (courseId: string): boolean => FIGURE_COURSES.has(courseId);
 

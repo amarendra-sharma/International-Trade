@@ -1,7 +1,7 @@
 // energy-vad.js - dependency-free fallback VAD used if the Silero model cannot load.
 // Tracks an adaptive noise floor and maps frame energy to a pseudo-probability in [0,1].
 // Less robust than Silero (fooled by loud non-speech noise); the UI should say so when it is active.
-import { rms } from './audio-utils.js?v=20261020a';
+import { rms } from './audio-utils.js?v=20261021a';
 
 export class EnergyVad {
   constructor(opts) {

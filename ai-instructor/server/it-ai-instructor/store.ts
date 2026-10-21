@@ -17,6 +17,7 @@ export interface CourseSettings {
 export interface CourseAccess {
   allowed: boolean; reason?: "not_found" | "not_enrolled" | "inactive" | "expired" | "payment_required";
   isStaff: boolean; ownerId: string; title: string; term: string | null; settings: CourseSettings;
+  studentName?: string;           // the signed-in user's first name, for greeting them
   platformKeyOwner?: string;      // set only for payer="platform" courses: the admin account whose stored key pays
 }
 export interface StoredKey {

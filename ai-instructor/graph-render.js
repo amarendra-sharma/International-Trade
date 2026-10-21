@@ -1,7 +1,7 @@
 // graph-render.js - draws what the server validated: a graph spec (numbers and short labels) as an SVG string, and an equation spec with KaTeX.
 // The model never supplies markup. Every string is escaped here regardless, numbers are re-checked, and the result contains no scripts, links or
 // event handlers. KaTeX is vendored in web/vendor/katex and is called with trust:false, so \href, \url, \includegraphics etc. are inert.
-import { buildFigure } from './figure-render.js?v=20261020a';
+import { buildFigure } from './figure-render.js?v=20261021a';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fin = (v) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= 1e6;
 const COLORS = ['#1f5fbf', '#c2410c', '#15803d', '#7e22ce', '#b45309', '#0e7490'];

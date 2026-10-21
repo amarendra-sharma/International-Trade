@@ -1,6 +1,6 @@
 // panel.js - the instructor panel: stage, status indicators, transcript, controls, text fallback, error state.
 // Uses textContent only (never innerHTML) so transcript text can never inject markup.
-import { requestMicPermission } from './mic.js?v=20261020a';
+import { requestMicPermission } from './mic.js?v=20261021a';
 
 var CSS = [
 '.mnai{--navy:#0f1d33;--navy2:#17263a;--gold:#d9b86a;--ink:#e9eef6;--mute:#9fb0c6;--bad:#ff8a80;--ok:#7fd3a0;display:grid;gap:10px;align-content:start;grid-template-columns:minmax(0,1fr);max-width:980px;margin:0 auto;padding:12px;background:var(--navy);color:var(--ink);border:1px solid #2b3d58;border-radius:14px;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}',
@@ -143,7 +143,7 @@ InstructorPanel.prototype.clearError = function () { this.errorBox.textContent =
 // role: 'student' | 'instructor'. Returns a handle so streamed text can be appended.
 InstructorPanel.prototype.addMessage = function (role, text) {
   var doc = this.opts.doc || document, p = doc.createElement('p'); p.className = 'mnai-msg';
-  var who = doc.createElement('b'); who.textContent = role === 'student' ? 'You' : 'Instructor';
+  var who = doc.createElement('b'); who.textContent = role === 'student' ? 'You' : 'Asha';
   var body = doc.createElement('span'); body.textContent = text || '';
   p.appendChild(who); p.appendChild(body); this.log.appendChild(p); this._messages.push(p);
   while (this._messages.length > this.maxMessages) { var old = this._messages.shift(); if (old.parentNode) old.parentNode.removeChild(old); }

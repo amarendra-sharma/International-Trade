@@ -1,5 +1,7 @@
 // converse.ts - one student turn: authorise, reserve the turn atomically, stream Claude, run allowlisted tools,
 // persist exactly once. Pure orchestration over injected dependencies, so every failure path is unit-testable.
+import { matchFigure } from "./figmatch.ts";
+import { figureSpec } from "./visuals.ts";
 import { LIMITS, LONG_PROMPT, hasFigures, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
 import { sleep as realSleep, withRetry } from "./retry.ts";
 import { buildSystem } from "./prompt.ts";
@@ -168,6 +170,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     // slow, independent steps start now and are awaited only when needed; the database reads, the key and the book all overlap
     // Every turn sends the table of contents plus only the chapters the question is about (voice: two, typed: up to three). The whole book is about
     // 110k tokens, which is slow and, on Haiku 5.5, is billed at five times the rate above 100k. Providers without prompt caching, or content without chapter data, keep the old path.
+    let visualShown = false, truncatedOnce = false, noTools = false, shownFig = "";
     const voiceFast = !otherProvider && !!deps.content.bookData;
     const maxChapters = req.input_mode === "voice" ? 2 : 3, maxChars = req.input_mode === "voice" ? 70_000 : 100_000;
     const keyP = decryptKey(stored.ciphertext, stored.iv, keyOwnerOf(deps, access), deps.kek);
@@ -199,7 +202,16 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       }
     }
     const preMs = Date.now() - t0;
-    const system = buildSystem({ textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
+    // The textbook figure the question is about goes onto the whiteboard NOW, before the model speaks, so the first spoken sentence already has the axes in front of the student.
+    let preFig: ReturnType<typeof matchFigure> = null;
+    if (hasFigures(session.courseId) && !dir.flags.length && dir.mode !== "review") { try { preFig = matchFigure(req.text); } catch { preFig = null; } }
+    let figDirective = "";
+    if (preFig) {
+      const spec = figureSpec(preFig.num);
+      figDirective = `FIGURE ALREADY ON THE WHITEBOARD: the textbook's Figure ${spec.num} (${spec.title}) is already showing next to you. Do NOT call show_figure or show_graph for it. The board reveals one step each time you start a new sentence and highlights it while you talk. Steps in order: ${spec.panels.flatMap((x) => x.steps.map((s) => s.label)).map((x, n) => (n + 1) + ") " + x).join("; ")}. Your FIRST sentence must describe step 1 (the axes), then one or two short sentences per step in exactly that order, then what it means. The book's own explanation (use it, add nothing that contradicts it): ${spec.caption}`;
+      visualShown = true; shownFig = spec.num; emit({ event: "visual", data: spec });
+    }
+    const system = buildSystem({ studentName: access.studentName, textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, figDirective, req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
     const messages: Msg[] = buildMessages(hist);
 
     // ---- deadlines: total turn time, and "superseded by a newer turn / ended elsewhere" ------------------------------------------
@@ -210,7 +222,6 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
 
     // ---- model loop with allowlisted tools -------------------------------------------------------------------------------------
     let stopReason = "end_turn";
-    let visualShown = false, truncatedOnce = false, noTools = false;
     let retryLocked = false;      // set once this iteration has streamed text to the student: retrying would repeat it
     for (let iter = 0; iter <= LIMITS.maxToolIterations; iter++) {
       retryLocked = false; const textBefore = assistantText.length;
@@ -276,7 +287,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       const results: ContentBlock[] = [];
       for (const call of calls.slice(0, LIMITS.maxToolsPerIteration)) {
         emit({ event: "tool", data: { name: call.name, status: "running" } });
-        const out = await runTool(call.name, call.input, { store, content: deps.content, userId: caller.userId, courseId: session.courseId, sessionId: session.id, turnId, chapter: req.context?.chapter ?? null, settings: access.settings, solutionGranted: dir.solutionGranted, emitVisual: (v) => { visualShown = true; emit({ event: "visual", data: v }); } }, call.id);
+        const out = await runTool(call.name, call.input, { store, content: deps.content, userId: caller.userId, courseId: session.courseId, sessionId: session.id, turnId, chapter: req.context?.chapter ?? null, settings: access.settings, solutionGranted: dir.solutionGranted, emitVisual: (v) => { if (v.kind === "figure") { if (v.num === shownFig) return; shownFig = v.num; } visualShown = true; emit({ event: "visual", data: v }); } }, call.id);
         log(out.ok ? "info" : "warn", out.ok ? "tool_ok" : "tool_rejected", { tool: call.name.slice(0, 40), reason: out.ok ? undefined : out.reason, turn_id: turnId });
         emit({ event: "tool", data: { name: call.name, status: out.ok ? "done" : "rejected" } });
         results.push({ type: "tool_result", tool_use_id: call.id, content: out.content, is_error: !out.ok });
