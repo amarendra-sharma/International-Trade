@@ -284,6 +284,56 @@
   @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important;scroll-behavior:auto !important;}}
 </style>
 <script>try{var _a=JSON.parse(localStorage.getItem('it_a11y')||'{}');var _d=document.documentElement;if(_a.z&&_a.z>1)_d.classList.add('a11y-z'+_a.z);if(_a.hc)_d.classList.add('a11y-hc');if(_a.cb)_d.classList.add('a11y-cb');}catch(e){}</script>
+<script>
+/* MacroNations visit tracking (shared across courses, build pvname-2026-10).
+   Logs ONE visit per browser session into page_views (MacroNation Tournament
+   project) with a client-made row id, then tags that row with the student's
+   name/email once they sign in (window.mnTagVisit). Fire-and-forget. */
+(function () {
+  var URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+  var KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+  var COURSE = 'intltrade';
+  function get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function put(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+  function hdr() { return { 'Content-Type': 'application/json', 'apikey': KEY, 'Authorization': 'Bearer ' + KEY }; }
+  function uuid() {
+    try { if (window.crypto && crypto.randomUUID) { return crypto.randomUUID(); } } catch (e) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+  var pending = null;
+  function flush() {
+    if (!pending || get('mn_pv_tagged')) { return; }
+    var id = get('mn_pv_id'); if (!id) { return; }
+    put('mn_pv_tagged', '1');
+    var p = pending; pending = null;
+    fetch(URL + '/rest/v1/rpc/mn_tag_page_view', { method: 'POST', headers: hdr(),
+      body: JSON.stringify({ p_id: id, p_user_id: p.u, p_name: p.n, p_email: p.e }) }).catch(function () {});
+  }
+  window.mnTagVisit = function (userId, name, email) {
+    try {
+      if (!email) { return; }
+      pending = { u: userId ? String(userId) : null, n: name ? String(name) : null, e: String(email) };
+      flush();
+    } catch (e) {}
+  };
+  try {
+    var sid = null, q = null;
+    try { q = new URLSearchParams(window.location.search).get('mn_sid'); } catch (e) {}
+    if (q) { sid = q; put('mn_sid', q); } else { sid = get('mn_sid'); }
+    if (!sid) { sid = Math.random().toString(36).slice(2) + Date.now().toString(36); put('mn_sid', sid); }
+    if (get('mn_pv_logged')) { return; }
+    put('mn_pv_logged', '1');
+    var id = uuid();
+    fetch(URL + '/rest/v1/page_views', { method: 'POST', headers: hdr(),
+      body: JSON.stringify({ id: id, session_id: sid,
+        referrer: document.referrer ? document.referrer.slice(0, 500) : null,
+        visited_at: new Date().toISOString(), course: COURSE, event_type: 'visit' })
+    }).then(function (r) { if (r && r.ok) { put('mn_pv_id', id); flush(); } }, function () {});
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 <a href="#mainContent" class="skip-link">Skip to main content</a>
@@ -492,7 +542,7 @@
    CONFIG
    ==================================================================== */
 var SUPABASE_URL = 'https://rtaiivegcqqmdchpguzn.supabase.co';
-var IT_BUILD = 'intltrade-phase1-2026-07';
+var IT_BUILD = 'intltrade-2026-10-pvname';
 var SUPABASE_ANON_KEY = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ---- Password-reset (recovery) handling ---------------------------------
@@ -922,6 +972,7 @@ function onSignedIn(user){
     State.profile=prof; State.role = prof.role ? prof.role : 'student';
     var metaName = (user.user_metadata && user.user_metadata.full_name) ? String(user.user_metadata.full_name).trim() : '';
     if(!prof.full_name && metaName){ prof.full_name = metaName; sb.from('it_profiles').update({ full_name: metaName }).eq('id', user.id).then(function(){}, function(){}); }
+    try{ if(window.mnTagVisit){ window.mnTagVisit(user.id, prof.full_name||'', user.email); } }catch(_e){}
     enterApp(user);
   });
 }
