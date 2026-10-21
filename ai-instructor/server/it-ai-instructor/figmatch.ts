@@ -73,7 +73,7 @@ export function matchFigure(text: string): FigureData | null {
     for (const w of words) if (t.includes(w)) s += 1;
     if (s) scored.push({ f, s });
   }
-  if (/offer/.test(t) && /tariff/.test(t)) { const o = scored.find((x) => x.f.num === "10.1"); if (o) o.s += 4; else scored.push({ f: FIGURES["10.1"]!, s: 4 }); }
+  if (/offer/.test(t) && /tariff/.test(t)) { const o = scored.find((x) => x.f.num === "10.1"); if (o) o.s += 12; else scored.push({ f: FIGURES["10.1"]!, s: 12 }); }
   scored.sort((a, b) => b.s - a.s);
   const top = scored[0], next = scored[1];
   if (!top || top.s < 2) return null;
