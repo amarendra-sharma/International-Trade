@@ -7515,7 +7515,7 @@ function loadMyExams() {
         var tmin = e.time_limit_minutes ? (acc && Number(acc.time_multiplier)!==1 ? Math.round(e.time_limit_minutes*Number(acc.time_multiplier)) : e.time_limit_minutes) : null;
         var statusHtml, action;
         if (notOpen) { statusHtml='<span class="tag dim">Opens '+new Date(effOpens).toLocaleString()+'</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Not open</button>'; }
-        else if (closed) { statusHtml='<span class="tag rose">Closed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Closed</button>'; }
+        else if (closed) { statusHtml='<span class="tag rose">Closed</span>'; var reviewBtnC = (sittings>0) ? ' <button class="btn btn-ghost btn-sm" data-review="'+e.id+'">Review answers</button>' : ''; action='<button class="btn btn-ghost btn-sm" disabled>Closed</button>'+reviewBtnC; }
         else if (allowed!==0 && sittings>=allowed) {
           var pctS = e.total_points && earnedBy[e.id]!==undefined ? Math.round((earnedBy[e.id]/(e.total_points*Math.max(1,sittings)))*100) : null;
           var canReview = (effCloses && now > new Date(effCloses).getTime()) || (!effCloses && sittings>0);
