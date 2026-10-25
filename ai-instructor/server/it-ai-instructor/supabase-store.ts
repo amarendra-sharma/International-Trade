@@ -295,13 +295,13 @@ export class SupabaseStore implements Store {
       : undefined;
     return { allowed: true, kind: String(d.kind), title: String(d.title), closesAt: d.closes_at ?? null, solutionsIncluded: d.solutions_included === true, items: Array.isArray(d.items) ? d.items : [], ...(scan ? { scan } : {}) };
   }
-  async walkSet(sessionId: string, userId: string, courseId: string, w: { ref: string; title: string; items: unknown[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null }): Promise<void> {
-    await this.rpcJson(this.t("review_walk_set"), { p_session: sessionId, p_user: userId, p_course: courseId, p_ref: w.ref, p_title: w.title, p_items: w.items.slice(0, 60), p_solutions: w.solutions, p_pos: w.pos, p_score: w.score, p_max: w.maxScore });
+  async walkSet(sessionId: string, userId: string, courseId: string, w: { ref: string; title: string; items: unknown[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null; scan?: unknown }): Promise<void> {
+    await this.rpcJson(this.t("review_walk_set"), { p_session: sessionId, p_user: userId, p_course: courseId, p_ref: w.ref, p_title: w.title, p_items: w.items.slice(0, 60), p_solutions: w.solutions, p_pos: w.pos, p_score: w.score, p_max: w.maxScore, p_scan: w.scan ?? null });
   }
   async walkPos(sessionId: string, userId: string, pos: number): Promise<void> { await this.rpcJson(this.t("review_walk_pos"), { p_session: sessionId, p_user: userId, p_pos: pos }); }
   async walkGet(sessionId: string, userId: string) {
     const d = await this.rpcJson(this.t("review_walk_get"), { p_session: sessionId, p_user: userId });
-    return d && d.ref ? { ref: String(d.ref), title: String(d.title ?? ""), items: Array.isArray(d.items) ? d.items : [], pos: Number(d.pos ?? 0), solutions: d.solutions === true, score: d.score === null || d.score === undefined ? null : Number(d.score), maxScore: d.max_score === null || d.max_score === undefined ? null : Number(d.max_score) } : null;
+    return d && d.ref ? { ref: String(d.ref), title: String(d.title ?? ""), items: Array.isArray(d.items) ? d.items : [], pos: Number(d.pos ?? 0), solutions: d.solutions === true, score: d.score === null || d.score === undefined ? null : Number(d.score), maxScore: d.max_score === null || d.max_score === undefined ? null : Number(d.max_score), scan: d.scan && typeof d.scan === "object" ? d.scan : null } : null;
   }
   async reviewLogMine(userId: string, courseId: string) { const d = await this.rpcJson(this.t("review_log_mine"), { p_user: userId, p_course: courseId }); return (Array.isArray(d) ? d : []).map((r: any) => ({ kind: String(r.kind), at: String(r.at) })); }
   async requestMeeting(userId: string, courseId: string, withWhom: "ta" | "professor", topic: string, note: string | null) {

@@ -195,7 +195,8 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         const t = walkTurn(w, req.text); walkDir = t.directive;
         if (t.showNext) {
           emit({ event: "visual", data: { kind: "missed", title: w.title, score: w.score, max_score: w.maxScore, total_questions: w.items.length, items: [t.showNext] } as never });
-          setWalk(session.id, { ref: w.ref, title: w.title, items: w.items, pos: t.pos, solutions: w.solutions, score: w.score, maxScore: w.maxScore });
+          if (w.scan) emit({ event: "visual", data: w.scan as never });   // the student's answer sheet stays on the board through the whole review
+          setWalk(session.id, { ref: w.ref, title: w.title, items: w.items, pos: t.pos, solutions: w.solutions, score: w.score, maxScore: w.maxScore, scan: w.scan ?? null });
           void store.walkPos?.(session.id, caller.userId, t.pos).catch(() => {});
         }
       }

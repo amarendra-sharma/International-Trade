@@ -2,7 +2,7 @@
 // The server (not the model's memory of earlier turns) hands the instructor the NEXT question when the student says yes,
 // and puts that one question on the whiteboard. Held in memory for speed and in the database so it survives a cold start.
 import type { MissedItem } from "./visuals.ts";
-export interface ReviewWalk { ref: string; title: string; items: MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null; at: number }
+export interface ReviewWalk { ref: string; title: string; items: MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null; scan?: Record<string, unknown> | null; at: number }
 const TTL_MS = 60 * 60 * 1000, MAX = 500;
 const walks = new Map<string, ReviewWalk>();
 export function setWalk(sessionId: string | null | undefined, w: Omit<ReviewWalk, "at">): void {
@@ -34,7 +34,7 @@ const entry = (m: MissedItem) => JSON.stringify({ q: m.q, ...(m.prompt ? { quest
 /** The directive for this turn, and the position after it. `advance` is true when the student asked to continue. */
 export function walkTurn(w: ReviewWalk, text: string): { directive: string; showNext: MissedItem | null; pos: number } {
   const n = w.items.length, go = wantsNext(text);
-  const head = `REVIEW IN PROGRESS for "${w.title}". The review tools were already run and the real record is below, so never say you skipped the tools, never invent a correction, and never open the exam again. ${BREVITY}`;
+  const head = `REVIEW IN PROGRESS for "${w.title}". The review tools were already run and the real record is below, so never say you skipped the tools, never invent a correction, and never open the exam again. If a question has no wording in the record, say so once and go over the answers only; never ask the student what the question says. The student's answer sheet stays on the board. ${BREVITY}`;
   if (go && w.pos < n) {
     const next = w.items[w.pos], last = w.pos + 1 >= n, qn = String(next.q).replace(/\D/g, "") || String(next.q);
     return { showNext: next, pos: w.pos + 1, directive: `${head}\nThe student understood and wants to continue. The next missed question is QUESTION ${qn} (${last ? "the last one" : `missed question ${w.pos + 1} of ${n}`}) and it is now alone on their whiteboard. Begin your reply with exactly "${last ? "Last one" : "Next"}, question ${qn}." and never praise the student's reply (no "good", "great", "good question"). Use ONLY this record and no other question, number or wording: ${entry(next)}${last ? "\nAfter this one, say it was the last and offer a two-sentence recap of what to study." : ""}` };

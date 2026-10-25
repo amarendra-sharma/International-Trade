@@ -144,4 +144,4 @@ export interface ContentRepo {
 }
 export const NullContent: ContentRepo = { search: async () => [], getSection: async () => [], outline: async () => [] };
 
-export interface WalkRecord { ref: string; title: string; items: import("./visuals.ts").MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null }
+export interface WalkRecord { ref: string; title: string; items: import("./visuals.ts").MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null; scan?: Record<string, unknown> | null }
