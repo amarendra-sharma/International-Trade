@@ -36,8 +36,8 @@ export function walkTurn(w: ReviewWalk, text: string): { directive: string; show
   const n = w.items.length, go = wantsNext(text);
   const head = `REVIEW IN PROGRESS for "${w.title}". The review tools were already run and the real record is below, so never say you skipped the tools, never invent a correction, and never open the exam again. ${BREVITY}`;
   if (go && w.pos < n) {
-    const next = w.items[w.pos];
-    return { showNext: next, pos: w.pos + 1, directive: `${head}\nThe student understood and wants to continue. The NEXT missed question (${w.pos + 1} of ${n}) is now on their whiteboard. Give one short acknowledgement, then teach exactly this question from this record only: ${entry(next)}${w.pos + 1 >= n ? "\nThis is the LAST missed question: after it, say so and offer a two-sentence recap of what to study." : ""}` };
+    const next = w.items[w.pos], last = w.pos + 1 >= n, qn = String(next.q).replace(/\D/g, "") || String(next.q);
+    return { showNext: next, pos: w.pos + 1, directive: `${head}\nThe student understood and wants to continue. The next missed question is QUESTION ${qn} (${last ? "the last one" : `missed question ${w.pos + 1} of ${n}`}) and it is now alone on their whiteboard. Begin your reply with exactly "${last ? "Last one" : "Next"}, question ${qn}." and never praise the student's reply (no "good", "great", "good question"). Use ONLY this record and no other question, number or wording: ${entry(next)}${last ? "\nAfter this one, say it was the last and offer a two-sentence recap of what to study." : ""}` };
   }
   if (go && w.pos >= n) return { showNext: null, pos: w.pos, directive: `${head}\nEvery missed question has now been covered. Say so in one sentence and give a two-sentence recap of what to study. Do not start another question.` };
   const prev = w.items[Math.max(0, w.pos - 1)];
