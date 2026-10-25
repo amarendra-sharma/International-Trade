@@ -70,8 +70,9 @@ export interface ReviewRepo {
   reviewList(userId: string, courseId: string, now: Date): Promise<ReviewList>;
   reviewGet(userId: string, courseId: string, ref: string, solutions: boolean, sessionId: string | null, now: Date): Promise<ReviewDetail>;
   reviewLogMine(userId: string, courseId: string): Promise<{ kind: string; at: string }[]>;
-  walkSet?(sessionId: string, userId: string, courseId: string, w: { ref: string; title: string; missed: number[]; solutions: boolean }): Promise<void>;
-  walkGet?(sessionId: string, userId: string): Promise<{ ref: string; title: string; missed: number[]; solutions: boolean } | null>;
+  walkSet?(sessionId: string, userId: string, courseId: string, w: WalkRecord): Promise<void>;
+  walkGet?(sessionId: string, userId: string): Promise<WalkRecord | null>;
+  walkPos?(sessionId: string, userId: string, pos: number): Promise<void>;
   requestMeeting(userId: string, courseId: string, withWhom: "ta" | "professor", topic: string, note: string | null): Promise<{ ok: boolean; id?: string; reason?: string }>;
   myMeetingRequests(userId: string, courseId: string): Promise<MeetingRequest[]>;
   listMeetingRequests(userId: string, courseId: string): Promise<{ ok: boolean; requests: MeetingRequest[] }>;
@@ -142,3 +143,5 @@ export interface ContentRepo {
   bookData?(courseId: string): Promise<{ full: string; toc: string; chapters: Map<number, string> }>;
 }
 export const NullContent: ContentRepo = { search: async () => [], getSection: async () => [], outline: async () => [] };
+
+export interface WalkRecord { ref: string; title: string; items: import("./visuals.ts").MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null }

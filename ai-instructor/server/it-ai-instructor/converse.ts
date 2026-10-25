@@ -2,7 +2,7 @@
 // persist exactly once. Pure orchestration over injected dependencies, so every failure path is unit-testable.
 import { matchFigure } from "./figmatch.ts";
 import { figureSpec } from "./visuals.ts";
-import { getWalk, walkDirective } from "./reviewstate.ts";
+import { getWalk, setWalk, walkTurn } from "./reviewstate.ts";
 import { LIMITS, LONG_PROMPT, courseSubject, hasFigures, MODELS, PRICES_USD_PER_MTOK, UNKNOWN_PRICE_USD_PER_MTOK, resolveBaseURL } from "./config.ts";
 import { sleep as realSleep, withRetry } from "./retry.ts";
 import { buildSystem } from "./prompt.ts";
@@ -186,6 +186,20 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     // ---- teaching directives (mode, hint-before-answer, instructor rules) and course retrieval, both decided here on the server ------
     const reviewOn = access.settings.reviewEnabled === true && !!store.reviewList;            // the review tools exist only when the course owner turned review on
     const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn, subject: courseSubject(session.courseId) });
+    // A review walkthrough in progress: on "yes" the server hands the instructor the next missed question and draws it on the board.
+    let walkDir = "";
+    if (reviewOn && access.settings.reviewEnabled) {
+      let w = getWalk(session.id);
+      if (!w) { const r = await store.walkGet?.(session.id, caller.userId).catch(() => null); if (r) { setWalk(session.id, r); w = getWalk(session.id); } }
+      if (w) {
+        const t = walkTurn(w, req.text); walkDir = t.directive;
+        if (t.showNext) {
+          emit({ event: "visual", data: { kind: "missed", title: w.title, score: w.score, max_score: w.maxScore, total_questions: w.items.length, items: [t.showNext] } as never });
+          setWalk(session.id, { ref: w.ref, title: w.title, items: w.items, pos: t.pos, solutions: w.solutions, score: w.score, maxScore: w.maxScore });
+          void store.walkPos?.(session.id, caller.userId, t.pos).catch(() => {});
+        }
+      }
+    }
     const cue: DrawCue = !hasFigures(session.courseId) && !dir.flags.length && dir.mode !== "review" ? drawCue(req.text) : null;
     const hist = await store.listMessages(session.id);
     const prevUser = [...hist].reverse().find((m) => m.role === "user" && m.turnId !== turnId)?.content;
@@ -214,7 +228,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       figDirective = `FIGURE ALREADY ON THE WHITEBOARD: the textbook's Figure ${spec.num} (${spec.title}) is already showing next to you. Do NOT call show_figure or show_graph for it. The board reveals one step each time you start a new sentence and highlights it while you talk. Steps in order: ${spec.panels.flatMap((x) => x.steps.map((s) => s.label)).map((x, n) => (n + 1) + ") " + x).join("; ")}. Do not announce or introduce the figure ("here is", "on your board", "before I start"); your FIRST sentence must already describe step 1 (the axes), then one or two short sentences per step in exactly that order, then what it means. The colours and solid/dashed styles in the step list are exact facts about the picture: never call a solid curve dashed or the reverse. Which curve is the original and which the shifted one comes ONLY from the book's explanation below; where it names a style or colour (for example "solid violet"), use exactly that, and where it does not, say "the solid purple curve" or "the dashed purple curve" by appearance without claiming which is which. The book's own explanation (use it, add nothing that contradicts it): ${spec.caption}`;
       visualShown = true; shownFig = spec.num; emit({ event: "visual", data: { ...spec, early: true } });
     }
-    const system = buildSystem({ noFigures: !hasFigures(session.courseId), studentName: access.studentName, textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, reviewOn ? ((w) => w ? walkDirective(w) : "")(getWalk(session.id) ?? (await store.walkGet?.(session.id, caller.userId).then((x) => x ? { ...x, at: Date.now() } : null).catch(() => null))) : "", figDirective, cue ? DRAW_DIRECTIVE[cue] : "", req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
+    const system = buildSystem({ noFigures: !hasFigures(session.courseId), studentName: access.studentName, textbook, focused, courseTitle: access.title, term: access.term, chapter: req.context?.chapter, view: req.context?.view, topic: req.context?.topic, directives: [dir.block, walkDir, figDirective, cue ? DRAW_DIRECTIVE[cue] : "", req.input_mode === "voice" ? "VOICE: The student has just heard a brief spoken acknowledgment (such as \"Good question\" or \"Sure, one moment\"). Do not open with an acknowledgment, praise, \"Let me draw that\" or \"Let me think\". Begin with the substance in your first sentence; if you will draw, say in that sentence what you are drawing and then make the call." : ""].filter(Boolean).join("\n"), retrieved: retrieval.block });
     const messages: Msg[] = buildMessages(hist);
 
     // ---- deadlines: total turn time, and "superseded by a newer turn / ended elsewhere" ------------------------------------------
