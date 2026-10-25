@@ -271,6 +271,8 @@ export const TOOLS: ToolDef[] = [
       const prior = getWalk(c.sessionId) ?? (c.sessionId ? await c.store.walkGet?.(c.sessionId, c.userId).catch(() => null) : null), again = !!prior && prior.ref === i.ref;
       if (first && !again && c.emitVisual && missed.length && !(r.kind === "paper" && r.scan?.mode === "score") && (r.kind !== "paper" || missed.some((m) => m.prompt))) {
         const v = missedSpec({ title: r.title, score: r.scan?.score ?? null, maxScore: r.scan?.maxScore ?? null, rows }); if (v) { c.emitVisual(v); missedOnBoard = true; }
+        // The first question comes with its own graph, so show it on its own card too.
+        const f0 = missed[0]; if (v && f0?.figure) { const one = missedSpec({ title: r.title, score: r.scan?.score ?? null, maxScore: r.scan?.maxScore ?? null, rows: [f0] }, true); if (one) { one.total_questions = rows.length; c.emitVisual(one); } }
       }
       const head = {
         allowed: true, kind: r.kind, title: short(r.title, 120), closes_at: r.closesAt, solutions_included: r.solutionsIncluded,

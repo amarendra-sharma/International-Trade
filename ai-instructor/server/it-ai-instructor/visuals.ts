@@ -14,7 +14,7 @@ export interface FigureSpec { kind: "figure"; num: string; title: string; captio
 /** A graded paper (bubble-sheet) exam: the scanned pages (paths in the private paper-scans bucket, which the student's own browser downloads with the student's own session) beside the questions they missed. */
 export interface ScanSpec { kind: "scan"; title: string; score: number | null; max_score: number | null; paths: string[]; bucket: "paper-scans"; wrong: { q: string; your: string; correct?: string; earned?: number; points?: number }[]; total_questions: number }
 /** The questions a student missed on a graded exam, arena or paper exam, laid out on the whiteboard so they can be gone over one by one. */
-export interface MissedItem { q: string; prompt?: string; options?: string[]; your: string; correct?: string; explanation?: string; earned?: number; points?: number }
+export interface MissedItem { q: string; figure?: string; prompt?: string; options?: string[]; your: string; correct?: string; explanation?: string; earned?: number; points?: number }
 export interface MissedSpec { kind: "missed"; title: string; score: number | null; max_score: number | null; total_questions: number; items: MissedItem[] }
 export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec | MissedSpec;
 
@@ -178,13 +178,16 @@ export function reviewRows(items: Record<string, unknown>[], solutions: boolean)
     if (Array.isArray(optsV) && optsV.length) row.options = optsV.slice(0, 8).map((o) => clean(optText(o), 160)).filter(Boolean);
     if (corrV !== undefined) row.correct = clean(corrV, 160);
     if (expV !== undefined) row.explanation = clean(expV, 700);
+    // The question's own graph (an SVG drawn by the instructor's item bank). Only a plain SVG string is kept; the browser re-checks it before drawing.
+    const figV = i.figure as { svg?: unknown } | undefined;
+    if (figV && typeof figV === "object" && typeof figV.svg === "string" && figV.svg.startsWith("<svg") && figV.svg.length <= 24000) row.figure = figV.svg;
     if (earned !== undefined) row.earned = earned; if (points !== undefined) row.points = points;
     rows.push(row);
   }
   return rows;
 }
-export function missedSpec(a: { title: string; score: number | null; maxScore: number | null; rows: ReviewRow[] }): MissedSpec | null {
-  const items = a.rows.filter((r) => r.wrong).slice(0, 60).map(({ wrong: _w, ...rest }) => rest);
+export function missedSpec(a: { title: string; score: number | null; maxScore: number | null; rows: ReviewRow[] }, withFigures = false): MissedSpec | null {
+  const items = a.rows.filter((r) => r.wrong).slice(0, 60).map(({ wrong: _w, figure, ...rest }) => (withFigures && figure ? { ...rest, figure } : rest));
   if (!items.length) return null;
   return { kind: "missed", title: clean(a.title, 120), score: a.score, max_score: a.maxScore, total_questions: a.rows.length, items };
 }
