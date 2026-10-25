@@ -13,7 +13,10 @@ export interface EquationSpec { kind: "equation"; tex: string; caption?: string 
 export interface FigureSpec { kind: "figure"; num: string; title: string; caption: string; panels: { viewBox: string; steps: { label: string; svg: string }[] }[] }
 /** A graded paper (bubble-sheet) exam: the scanned pages (paths in the private paper-scans bucket, which the student's own browser downloads with the student's own session) beside the questions they missed. */
 export interface ScanSpec { kind: "scan"; title: string; score: number | null; max_score: number | null; paths: string[]; bucket: "paper-scans"; wrong: { q: string; your: string; correct?: string; earned?: number; points?: number }[]; total_questions: number }
-export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec;
+/** The questions a student missed on a graded exam, arena or paper exam, laid out on the whiteboard so they can be gone over one by one. */
+export interface MissedItem { q: string; prompt?: string; options?: string[]; your: string; correct?: string; explanation?: string; earned?: number; points?: number }
+export interface MissedSpec { kind: "missed"; title: string; score: number | null; max_score: number | null; total_questions: number; items: MissedItem[] }
+export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec | MissedSpec;
 
 const clean = (s: unknown, n: number) => String(s ?? "").replace(/[\u0000-\u001f<>&"'`]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const LIM = 1e6;
@@ -150,6 +153,53 @@ export function consumerChoice(i: ChoiceInput): ChoiceResult {
   const spec: GraphSpec = { kind: "graph", x_label: clean(i.x_label ?? "Good X", 40), y_label: clean(i.y_label ?? "Good Y", 40), x_max: xmax, y_max: ymax, series, markers };
   spec.title = clean(i.title ?? (multi ? "Consumer choice: before and after" : "Consumer choice: budget line and indifference curve"), 80);
   return { spec, before: { x: r3(o0.x), y: r3(o0.y), utility: r3(o0.U) }, ...(o1 ? { after: { x: r3(o1.x), y: r3(o1.y), utility: r3(o1.U) } } : {}), note };
+}
+
+// ---- graded-work review: every question, not only the first few ------------------------------------------------------------------
+export interface ReviewRow extends MissedItem { wrong: boolean }
+const firstOf = (i: Record<string, unknown>, ...keys: string[]): unknown => { for (const k of keys) if (i[k] !== undefined && i[k] !== null && i[k] !== "") return i[k]; return undefined; };
+const optText = (o: unknown): string => typeof o === "string" ? o : o && typeof o === "object" ? String((o as Record<string, unknown>).text ?? (o as Record<string, unknown>).label ?? "") : String(o ?? "");
+/** One row per question from any of the review shapes (online exam, paper exam, arena), correct answers and explanations only when `solutions` is true. */
+export function reviewRows(items: Record<string, unknown>[], solutions: boolean): ReviewRow[] {
+  const rows: ReviewRow[] = [];
+  for (const i of items) {
+    if (!i || typeof i !== "object") continue;
+    const qv = firstOf(i, "q", "n"); if (qv === undefined) continue;
+    const earnedV = firstOf(i, "points_earned", "earned"), pointsV = firstOf(i, "points_possible", "points");
+    const earned = typeof earnedV === "number" ? earnedV : undefined, points = typeof pointsV === "number" ? pointsV : undefined;
+    const flag = firstOf(i, "marked_correct", "correct_flag");
+    const wrong = flag === false || (flag !== true && earned !== undefined && points !== undefined && earned < points);
+    const promptV = firstOf(i, "prompt", "question"), optsV = i.options;
+    const yourV = firstOf(i, "student_choice", "your", "student_answer");
+    const corrV = solutions ? firstOf(i, "correct_choice", "correct", "correct_value") : undefined;
+    const expV = solutions ? firstOf(i, "explanation", "rationale") : undefined;
+    const row: ReviewRow = { q: clean(qv, 8), your: clean(yourV, 160) || "blank", wrong };
+    if (promptV !== undefined) row.prompt = clean(promptV, 700);
+    if (Array.isArray(optsV) && optsV.length) row.options = optsV.slice(0, 8).map((o) => clean(optText(o), 160)).filter(Boolean);
+    if (corrV !== undefined) row.correct = clean(corrV, 160);
+    if (expV !== undefined) row.explanation = clean(expV, 700);
+    if (earned !== undefined) row.earned = earned; if (points !== undefined) row.points = points;
+    rows.push(row);
+  }
+  return rows;
+}
+export function missedSpec(a: { title: string; score: number | null; maxScore: number | null; rows: ReviewRow[] }): MissedSpec | null {
+  const items = a.rows.filter((r) => r.wrong).slice(0, 60).map(({ wrong: _w, ...rest }) => rest);
+  if (!items.length) return null;
+  return { kind: "missed", title: clean(a.title, 120), score: a.score, max_score: a.maxScore, total_questions: a.rows.length, items };
+}
+/** The next page of missed questions for the model, sized to fit the tool-output limit so nothing is cut off mid-question. */
+export function reviewPage(missed: ReviewRow[], offset: number, budgetChars = 3600): { entries: Record<string, unknown>[]; next_offset: number | null } {
+  const entries: Record<string, unknown>[] = []; let used = 0, k = Math.max(0, offset);
+  for (; k < missed.length; k++) {
+    const m = missed[k];
+    const e: Record<string, unknown> = { q: m.q, ...(m.prompt ? { question: m.prompt.slice(0, 450) } : {}), ...(m.options ? { options: m.options.slice(0, 6).map((o) => o.slice(0, 90)) } : {}), student_answer: m.your,
+      ...(m.correct !== undefined ? { correct_answer: m.correct } : {}), ...(m.explanation ? { explanation: m.explanation.slice(0, 350) } : {}), ...(m.earned !== undefined && m.points !== undefined ? { points: `${m.earned} of ${m.points}` } : {}) };
+    const size = JSON.stringify(e).length;
+    if (entries.length && used + size > budgetChars) break;
+    entries.push(e); used += size;
+  }
+  return { entries, next_offset: k < missed.length ? k : null };
 }
 
 // TeX that could reach outside math rendering is refused. The client also renders with KaTeX `trust: false`.
