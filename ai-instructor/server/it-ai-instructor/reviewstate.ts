@@ -29,7 +29,14 @@ export function wantsNext(text: string): boolean {
 }
 
 const BREVITY = "BE BRIEF. Per question use at most five short sentences: say the number, restate the question in one sentence (the full wording is on the board), say what the student chose versus the correct answer, give the reason in one or two sentences, then ask one short check like \"Clear?\". No long introduction, no repeating the score, no re-explaining earlier questions, no apologies.";
-const entry = (m: MissedItem) => JSON.stringify({ q: m.q, ...(m.figure ? { graph: "the graph for this question is on the board; refer to it, do not describe it from memory" } : {}), ...(m.prompt ? { question: m.prompt } : {}), ...(m.options ? { options: m.options } : {}), student_answer: m.your, ...(m.correct !== undefined ? { correct_answer: m.correct } : {}), ...(m.explanation ? { explanation: m.explanation } : {}) });
+const LET = "ABCDEFGH";
+const entry = (m: MissedItem) => {
+  const qn = String(m.q).replace(/\D/g, "") || String(m.q);
+  const opts = m.options?.length ? "\nOptions: " + m.options.map((o, i) => `${LET[i] ?? i + 1}. ${o}`).join(" | ") : "";
+  return [`QUESTION ${qn}${m.figure ? " (its graph is on the board: refer to it, do not describe it from memory)" : ""}`,
+    m.prompt ? `Wording: ${m.prompt}` : "Wording: not available in this review (say so once, then go over the answers only)", opts.trim() ? opts.trim() : "",
+    `The student answered: ${m.your}`, m.correct !== undefined ? `The correct answer is: ${m.correct}` : "The correct answer is not available", m.explanation ? `Explanation: ${m.explanation}` : ""].filter(Boolean).join("\n");
+};
 
 /** The directive for this turn, and the position after it. `advance` is true when the student asked to continue. */
 /** "question 5", "q5", "number 12", "go to 7", or just "7": the missed-question list position it names, or -1. */
@@ -49,7 +56,7 @@ export function walkTurn(w: ReviewWalk, text: string): { directive: string; show
   const head = `REVIEW IN PROGRESS for "${w.title}". The review tools were already run and the real record is below, so never say you skipped the tools, never say a number or question is missing, never invent a correction, and never open the exam again. ${facts} If a question has no wording in the record, say so once and go over the answers only; never ask the student what the question says. The student's answer sheet stays on the board. ${BREVITY}`;
   const teach = (it: MissedItem, last: boolean, lead: string, pos: number) => {
     const qn = String(it.q).replace(/\D/g, "") || String(it.q);
-    return { showNext: it, pos, directive: `${head}\n${lead} Begin your reply with exactly "${last ? "Last one" : "Next"}, question ${qn}." only if you are moving on; if the student asked for this question by number, begin with "Question ${qn}." Never praise the student's reply (no "good", "great", "good question"). The question is alone on the whiteboard now with the answer sheet. Use ONLY this record and no other question, number or wording: ${entry(it)}${last ? "\nAfter this one, say it was the last and offer a two-sentence recap of what to study." : ""}` };
+    return { showNext: it, pos, directive: `${head}\n${lead} Begin your reply with exactly "${last ? "Last one" : "Next"}, question ${qn}." only if you are moving on; if the student asked for this question by number, begin with "Question ${qn}." Never praise the student's reply (no "good", "great", "good question"). The question is alone on the whiteboard now with the answer sheet. Use ONLY this record and no other question, number or wording. Do not say the wording is unavailable when it is given below.\n${entry(it)}${last ? "\nAfter this one, say it was the last and offer a two-sentence recap of what to study." : ""}` };
   };
   if (ask) {
     if (ask.idx >= 0) return teach(w.items[ask.idx], ask.idx + 1 >= n, `The student asked for question ${ask.n} by number.`, ask.idx + 1);

@@ -15,7 +15,8 @@ export interface FigureSpec { kind: "figure"; num: string; title: string; captio
 export interface ScanSpec { kind: "scan"; title: string; score: number | null; max_score: number | null; paths: string[]; bucket: "paper-scans"; wrong: { q: string; your: string; correct?: string; earned?: number; points?: number }[]; total_questions: number }
 /** The questions a student missed on a graded exam, arena or paper exam, laid out on the whiteboard so they can be gone over one by one. */
 export interface MissedItem { q: string; figure?: string; prompt?: string; options?: string[]; your: string; correct?: string; explanation?: string; earned?: number; points?: number }
-export interface MissedSpec { kind: "missed"; title: string; score: number | null; max_score: number | null; total_questions: number; items: MissedItem[] }
+export interface MissedSpec {
+  index?: number; count?: number; kind: "missed"; title: string; score: number | null; max_score: number | null; total_questions: number; items: MissedItem[] }
 export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec | MissedSpec;
 
 const clean = (s: unknown, n: number) => String(s ?? "").replace(/[\u0000-\u001f<>&"'`]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);

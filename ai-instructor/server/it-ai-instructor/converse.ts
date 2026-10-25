@@ -144,6 +144,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
   const onClientAbort = () => ac.abort(new DOMException("client", "AbortError"));
   if (clientSignal.aborted) onClientAbort(); else clientSignal.addEventListener("abort", onClientAbort, { once: true });
   const timers: number[] = [];
+  const walkCommit: { fn: (() => void) | null } = { fn: null };   // moves the review forward only once the instructor has actually started speaking about the new question
   let assistantText = "", usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, longUsage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ttft: number | null = null;
   const otherProvider = stored.provider && stored.provider !== "anthropic";
   const model = stored.model && (MODELS.allowed as readonly string[]).includes(stored.model) ? stored.model : MODELS.default;
@@ -194,10 +195,13 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       if (w) {
         const t = walkTurn(w, req.text); walkDir = t.directive;
         if (t.showNext) {
-          emit({ event: "visual", data: { kind: "missed", title: w.title, score: w.score, max_score: w.maxScore, total_questions: w.items.length, items: [t.showNext] } as never });
-          if (w.scan) emit({ event: "visual", data: w.scan as never });   // the student's answer sheet stays on the board through the whole review
-          setWalk(session.id, { ref: w.ref, title: w.title, items: w.items, pos: t.pos, solutions: w.solutions, score: w.score, maxScore: w.maxScore, scan: w.scan ?? null });
-          void store.walkPos?.(session.id, caller.userId, t.pos).catch(() => {});
+          const at = w.items.indexOf(t.showNext) + 1, keep = w;
+          emit({ event: "visual", data: { kind: "missed", title: w.title, score: w.score, max_score: w.maxScore, total_questions: w.items.length, index: at, count: w.items.length, items: [t.showNext] } as never });
+          if (w.scan) emit({ event: "visual", data: w.scan as never });   // the student's answer sheet stays on the board, below the question, through the whole review
+          walkCommit.fn = () => {
+            setWalk(session.id, { ref: keep.ref, title: keep.title, items: keep.items, pos: t.pos, solutions: keep.solutions, score: keep.score, maxScore: keep.maxScore, scan: keep.scan ?? null });
+            void store.walkPos?.(session.id, caller.userId, t.pos).catch(() => {});
+          };
         }
       }
     }
@@ -336,6 +340,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         if (dir.helpDetail) await store.recordEvent(caller.userId, session.courseId, session.id, `${turnId}:help`, { event: "help_requested", topic: (topic ?? "general").toLowerCase(), detail: dir.helpDetail });
       } catch { log("warn", "learning_event_failed", { turn_id: turnId }); }
     }
+    if (walkCommit.fn && assistantText.trim().length >= 25) walkCommit.fn();
     const closed = await store.finishTurn({ turnId, status: "completed", assistantText, endState: "speaking", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride, longUsage) });
     log("info", "turn_done", { turn_id: turnId, session_id: session.id, course_id: session.courseId, input_tokens: usage.input, output_tokens: usage.output, cache_read_tokens: usage.cacheRead, cost_micro_usd: costMicroUsd(chosenModel, usage, priceOverride, longUsage), latency_ms: Date.now() - t0, ttft_ms: ttft ?? undefined, pre_ms: preMs, stop_reason: stopReason });
     if (closed) emit({ event: "done", data: { turn_id: turnId, stop_reason: stopReason, usage: { input_tokens: usage.input, output_tokens: usage.output } } });
@@ -350,6 +355,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     if (!interrupted) log("warn", "turn_failed", { turn_id: turnId || undefined, code: body.error, session_id: session.id, course_id: session.courseId, latency_ms: Date.now() - t0 });
     if (turnId) {
       try {
+        if (interrupted && walkCommit.fn && assistantText.trim().length >= 25) walkCommit.fn();
         await store.finishTurn({ turnId, status: interrupted ? "interrupted" : "failed", assistantText, errorCode: interrupted ? undefined : body.error, endState: interrupted ? "interrupted" : "listening", usage: usageRecord(turnId, session, caller.userId, chosenModel, usage, Date.now() - t0, ttft, priceOverride, longUsage) });
       } catch (pe) { log("error", "persist_failed", { turn_id: turnId, code: "finish_turn" }); void pe; }
     }
