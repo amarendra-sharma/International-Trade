@@ -78,6 +78,9 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
     properties: { action: { type: "string", enum: ["request_meeting"] }, course_id: uuid, with: { type: "string", enum: ["ta", "professor"] }, topic: { type: "string", minLength: 1, maxLength: 200 }, note: { type: "string", maxLength: 500 } },
   },
   list_review_requests: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["list_review_requests"] }, course_id: uuid } },
+  // professor mode audit view (staff only): the AI instructor's recent actions and an undo button
+  prof_log: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_log"] }, course_id: uuid } },
+  prof_undo: { type: "object", additionalProperties: false, required: ["action", "course_id", "action_id"], properties: { action: { type: "string", enum: ["prof_undo"] }, course_id: uuid, action_id: { type: "integer", minimum: 1, maximum: 1000000000000 } } },
   complete_review_request: { type: "object", additionalProperties: false, required: ["action", "course_id", "request_id"], properties: { action: { type: "string", enum: ["complete_review_request"] }, course_id: uuid, request_id: uuid } },
   // course materials upload (instructor/owner only): batches of pre-chunked text for a source, e.g. lecture slides
   ingest_materials: {

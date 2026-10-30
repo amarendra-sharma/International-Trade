@@ -260,6 +260,18 @@ export async function listReviewRequests(deps: Deps, c: Caller, courseId: string
   if (!r.ok) return err(403, errBody("forbidden", "Only the course staff can see meeting requests.", false));
   return ok({ requests: r.requests.map((q) => ({ id: q.id, with: q.with, topic: q.topic, note: q.note ?? null, status: q.status, created_at: q.createdAt, student: q.student ?? "student" })) });
 }
+export async function profLog(deps: Deps, c: Caller, courseId: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("recent", { p_user: c.userId, p_course: courseId, p_limit: 50 });
+  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see this.", false));
+  return ok({ actions: r.actions ?? [] });
+}
+export async function profUndo(deps: Deps, c: Caller, courseId: string, actionId: number): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("undo", { p_user: c.userId, p_course: courseId, p_action: actionId });
+  if (!r?.ok) return err(r?.reason === "not_staff" ? 403 : 409, errBody(r?.reason === "not_staff" ? "forbidden" : "bad_request", r?.reason === "not_staff" ? "Only the course staff can undo this." : "That action cannot be undone (already undone, or already applied).", false));
+  return ok({ undone: true });
+}
 export async function completeReviewRequest(deps: Deps, c: Caller, courseId: string, requestId: string): Promise<Result> {
   const a = await reviewAccess(deps, c, courseId);
   if (!a.allowed || !a.isStaff) return err(403, errBody("forbidden", "Only the course staff can do this.", false));

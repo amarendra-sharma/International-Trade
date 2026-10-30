@@ -70,6 +70,8 @@ export function makeHandler(deps: Deps, opts: HttpOptions) {
         case "list_review_requests": r = await A.listReviewRequests(deps, caller, body.course_id); break;
         case "complete_review_request": r = await A.completeReviewRequest(deps, caller, body.course_id, body.request_id); break;
         case "ingest_materials": r = await A.ingestMaterials(deps, caller, body.course_id, body as never); break;
+        case "prof_log": r = await A.profLog(deps, caller, body.course_id); break;
+        case "prof_undo": r = await A.profUndo(deps, caller, body.course_id, body.action_id); break;
         case "get_settings": r = await A.getSettings(deps, caller, body.course_id); break;
         case "set_settings": r = await A.setSettings(deps, caller, body.course_id, body); break;
         default: r = { status: 400, body: errBody("bad_request", "Unknown action.", false) };

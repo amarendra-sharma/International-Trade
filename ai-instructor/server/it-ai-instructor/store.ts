@@ -152,5 +152,9 @@ export const NullContent: ContentRepo = { search: async () => [], getSection: as
 export interface WalkRecord { ref: string; title: string; items: import("./visuals.ts").MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null; scan?: Record<string, unknown> | null }
 
 /** The fixed set of professor-mode database functions (ma_ai_prof_*). Nothing else can be reached through profCall. */
-export type ProfCall = "overview" | "set_exam_window" | "announce" | "finalize" | "exam_results" | "undo" | "recent";
-export const PROF_CALLS: readonly ProfCall[] = ["overview", "set_exam_window", "announce", "finalize", "exam_results", "undo", "recent"];
+export type ProfCall = "overview" | "set_exam_window" | "announce" | "finalize" | "exam_results" | "undo" | "recent"
+  | "assignment_save" | "deadline" | "submissions" | "propose_feedback" | "finalize_assignment" | "grade_override" | "apply_due"
+  | "student_ask" | "student_questions" | "questions" | "answer_question" | "class_start" | "class_step" | "class_current" | "standing_set" | "standing_list";
+export const PROF_CALLS: readonly ProfCall[] = ["overview", "set_exam_window", "announce", "finalize", "exam_results", "undo", "recent",
+  "assignment_save", "deadline", "submissions", "propose_feedback", "finalize_assignment", "grade_override", "apply_due",
+  "student_ask", "student_questions", "questions", "answer_question", "class_start", "class_step", "class_current", "standing_set", "standing_list"];
