@@ -15,6 +15,8 @@ export interface CourseSettings {
   payer: "instructor" | "platform";
   // what students may use the AI for (migration 104, Micro only): "course_only" refuses anything outside the course subject; textbook explanations on/off; which kinds of graded work can be reviewed
   scopeMode: "course_only" | "open"; useTextbook: boolean; reviewKinds: ReviewKind[];
+  // professor mode (migration 112, Macroeconomics): the course owner lets the AI act for the course staff. Staff sessions only.
+  professorMode?: boolean;
 }
 export type ReviewKind = "exams" | "quizzes" | "assignments" | "arenas";
 export const REVIEW_KINDS: ReviewKind[] = ["exams", "quizzes", "assignments", "arenas"];
@@ -65,6 +67,7 @@ export interface ReviewScan { sheetId: string; paths: string[]; score: number | 
 export type ReviewDetail = { allowed: true; kind: string; title: string; closesAt: string | null; solutionsIncluded: boolean; items: Record<string, unknown>[]; scan?: ReviewScan } | { allowed: false; reason: ReviewReason; closesAt?: string | null };
 export interface MeetingRequest { id: string; with: "ta" | "professor"; topic: string; note?: string | null; status: "open" | "done"; createdAt: string; student?: string }
 export interface ReviewRepo {
+  profCall?(name: ProfCall, args: Record<string, unknown>): Promise<any>;
   reviewConsentGet(userId: string, courseId: string): Promise<ReviewConsent>;
   reviewConsentSet(userId: string, courseId: string, granted: boolean, version: number): Promise<{ ok: boolean; reason?: string } & Partial<ReviewConsent>>;
   reviewList(userId: string, courseId: string, now: Date): Promise<ReviewList>;
@@ -145,3 +148,7 @@ export interface ContentRepo {
 export const NullContent: ContentRepo = { search: async () => [], getSection: async () => [], outline: async () => [] };
 
 export interface WalkRecord { ref: string; title: string; items: import("./visuals.ts").MissedItem[]; pos: number; solutions: boolean; score: number | null; maxScore: number | null; scan?: Record<string, unknown> | null }
+
+/** The fixed set of professor-mode database functions (ma_ai_prof_*). Nothing else can be reached through profCall. */
+export type ProfCall = "overview" | "set_exam_window" | "announce" | "finalize" | "exam_results" | "undo" | "recent";
+export const PROF_CALLS: readonly ProfCall[] = ["overview", "set_exam_window", "announce", "finalize", "exam_results", "undo", "recent"];

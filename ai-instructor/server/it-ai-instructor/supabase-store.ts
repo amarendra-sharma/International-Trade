@@ -1,10 +1,10 @@
 // supabase-store.ts - production Store: PostgREST reads/writes plus the it_ai_* functions, all via the service role.
 // No raw SQL is ever built from user input; every value travels as a typed parameter.
 import { LIMITS, MODELS, RETENTION } from "./config.ts";
-import { REVIEW_KINDS } from "./store.ts";
+import { REVIEW_KINDS, PROF_CALLS } from "./store.ts";
 import { assertTransition } from "./session-machine.ts";
 import type { SessionState } from "./schemas.ts";
-import type { IngestChunk, MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
+import type { IngestChunk, MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, ProfCall, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
 import { type Control, isMode } from "./resilience.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -25,6 +25,7 @@ export function mapSettings(s: Record<string, any>): CourseSettings {
     reviewEnabled: s.review_enabled === true, reviewShowSolutions: s.review_show_solutions !== false, payer: s.payer === "platform" ? "platform" : "instructor",
     scopeMode: s.scope_mode === "course_only" ? "course_only" : "open", useTextbook: s.use_textbook !== false,
     reviewKinds: Array.isArray(s.review_kinds) ? REVIEW_KINDS.filter((k) => s.review_kinds.includes(k)) : [...REVIEW_KINDS],
+    professorMode: s.professor_mode === true && s.prof_paused !== true,
   };
 }
 const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
@@ -273,6 +274,10 @@ export class SupabaseStore implements Store {
     const { data, error } = await this.db.rpc(name, args);
     if (error) throw new Error(`db: ${name} failed`);
     return data as any;
+  }
+  async profCall(name: ProfCall, args: Record<string, unknown>) {
+    if (!PROF_CALLS.includes(name)) throw new Error("db: unknown professor call");
+    return this.rpcJson(this.t("prof_" + name), args);
   }
   async reviewConsentGet(userId: string, courseId: string) {
     const d = await this.rpcJson(this.t("review_consent_get"), { p_user: userId, p_course: courseId });

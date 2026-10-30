@@ -24,8 +24,10 @@ import { masteryEstimate } from "./teaching.ts";
 export interface ToolContext {
   store: Store; content: ContentRepo; userId: string; courseId: string; sessionId: string; turnId: string;
   chapter?: number | null; settings?: CourseSettings; solutionGranted?: boolean; emitVisual?: (v: VisualSpec) => void;
+  /** true ONLY in a staff session of a course whose owner turned professor mode on; set by the server from the database, never from the request. */
+  profMode?: boolean;
 }
-interface ToolDef { name: string; description: string; input: Schema; review?: true; figures?: true; noFigures?: true; run: (input: any, ctx: ToolContext, toolUseId: string) => Promise<Record<string, unknown>> }
+interface ToolDef { name: string; description: string; input: Schema; review?: true; prof?: true; figures?: true; noFigures?: true; run: (input: any, ctx: ToolContext, toolUseId: string) => Promise<Record<string, unknown>> }
 
 const text = (max: number, min = 1): Schema => ({ type: "string", minLength: min, maxLength: max });
 const num: Schema = { type: "number", minimum: -1e9, maximum: 1e9 };
@@ -309,8 +311,71 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
+// ---- professor mode (staff sessions only; every rule is enforced again inside ma_ai_prof_* in the database) ------------------------------------------
+const PROF_NEXT: Record<string, string> = {
+  not_staff: "You are not course staff for this course, so you cannot do this. Say so.",
+  prof_off: "Professor mode is not turned on for this course. Say the professor can turn it on in the AI instructor settings.",
+  paused: "Professor mode is paused by the professor. Say so and do not try again.",
+  ai_off: "The AI instructor is switched off for this course.",
+  action_off: "The professor has switched this kind of action off. Say so; do not look for another way.",
+  daily_cap: "The daily limit on actions for this course has been reached. Say so; the professor can raise it.",
+  announce_limit: "Three announcements have already been posted in the last 24 hours. Say so and offer to include it in a later one.",
+  not_found: "That item does not exist in this course. Use an id exactly as returned by prof_overview.",
+  bad_window: "The closing time must be after the opening time. Ask the professor to confirm the times.",
+  would_close_in_past: "That would close an exam that students have already taken, in the past. Not allowed; ask the professor what they intend.",
+  bad_text: "The title must be 3 to 160 characters and the body at most 4000.",
+  not_undoable: "That action cannot be undone (already undone, or not a reversible kind).",
+};
+const profResult = (r: any): Record<string, unknown> => r && r.ok === false || r && r.allowed === false ? { ...r, next_step: PROF_NEXT[String(r.reason)] ?? "That was refused. Say so and do not retry." } : (r ?? {});
+const isoSchema: Schema = { type: "string", minLength: 20, maxLength: 40, pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$" };
+const PROF_TOOLS: ToolDef[] = [
+  {
+    name: "prof_overview", prof: true,
+    description: "PROFESSOR MODE. Snapshot of this course for the professor: enrolled count, every exam/quiz (id, title, window, how many students attempted, how many written answers are ungraded, how many AI score proposals are waiting), assignments with ungraded counts, and recent announcements. Call this first whenever the professor asks about the state of the course, and to get exam ids.",
+    input: { type: "object", additionalProperties: false, properties: {} },
+    async run(_i, c) { return profResult(await c.store.profCall!("overview", { p_user: c.userId, p_course: c.courseId })); },
+  },
+  {
+    name: "prof_set_exam_window", prof: true,
+    description: "PROFESSOR MODE. Change when an exam or quiz opens and closes, and/or publish or unpublish it. Times are ISO 8601 with a UTC offset, for example 2026-11-05T09:00:00-05:00 (the professor is in US Eastern time unless they say otherwise; use the current date in the conversation). Omit a field to leave it unchanged. Returns before/after and an action_id. Repeat the new times back to the professor in plain words. It can never close an already-taken exam in the past.",
+    input: { type: "object", additionalProperties: false, required: ["exam_id"], properties: { exam_id: { type: "string", pattern: UUID }, opens_at: isoSchema, closes_at: isoSchema, publish: { type: "boolean" } } },
+    async run(i, c) { return profResult(await c.store.profCall!("set_exam_window", { p_user: c.userId, p_course: c.courseId, p_exam: i.exam_id, p_opens: i.opens_at ?? null, p_closes: i.closes_at ?? null, p_publish: i.publish ?? null, p_session: c.sessionId, p_trigger: "professor" })); },
+  },
+  {
+    name: "prof_announce", prof: true,
+    description: "PROFESSOR MODE. Post an announcement to the whole class (students see it in the course). Write it yourself in the professor's voice, short and clear. At most three per day. Only post when the professor has asked for an announcement or told you what to announce.",
+    input: { type: "object", additionalProperties: false, required: ["title", "body"], properties: { title: text(160, 3), body: text(4000, 1) } },
+    async run(i, c) { return profResult(await c.store.profCall!("announce", { p_user: c.userId, p_course: c.courseId, p_title: i.title, p_body: i.body, p_session: c.sessionId, p_trigger: "professor" })); },
+  },
+  {
+    name: "prof_finalize_ai_scores", prof: true,
+    description: "PROFESSOR MODE. Accept the AI's already-proposed scores on ungraded written answers (for one exam, or the whole course if exam_id is omitted) and record them as final grades. It only touches answers that have an AI proposal and no human grade, and never overwrites a grade a person entered. Returns how many were graded and an action_id so it can be undone. Say how many you graded.",
+    input: { type: "object", additionalProperties: false, properties: { exam_id: { type: "string", pattern: UUID } } },
+    async run(i, c) { return profResult(await c.store.profCall!("finalize", { p_user: c.userId, p_course: c.courseId, p_exam: i.exam_id ?? null, p_session: c.sessionId, p_trigger: "professor" })); },
+  },
+  {
+    name: "prof_exam_results", prof: true,
+    description: "PROFESSOR MODE. How the class did on one exam or quiz: number of students, mean, minimum and maximum percentage, and how many still have ungraded written answers. Aggregates only; no student names or answers.",
+    input: { type: "object", additionalProperties: false, required: ["exam_id"], properties: { exam_id: { type: "string", pattern: UUID } } },
+    async run(i, c) { return profResult(await c.store.profCall!("exam_results", { p_user: c.userId, p_course: c.courseId, p_exam: i.exam_id })); },
+  },
+  {
+    name: "prof_recent_actions", prof: true,
+    description: "PROFESSOR MODE. The most recent actions taken in this course by the AI instructor (what, when, status, action_id). Use it when the professor asks what you did, or before undoing something.",
+    input: { type: "object", additionalProperties: false, properties: {} },
+    async run(_i, c) { return profResult(await c.store.profCall!("recent", { p_user: c.userId, p_course: c.courseId, p_limit: 20 })); },
+  },
+  {
+    name: "prof_undo", prof: true,
+    description: "PROFESSOR MODE. Undo one earlier action by its action_id (an exam window change, an announcement, or a batch of finalized scores). Only when the professor asks.",
+    input: { type: "object", additionalProperties: false, required: ["action_id"], properties: { action_id: { type: "number", minimum: 1, maximum: 1e12 } } },
+    async run(i, c) { return profResult(await c.store.profCall!("undo", { p_user: c.userId, p_course: c.courseId, p_action: Math.floor(i.action_id) })); },
+  },
+];
+
+TOOLS.push(...PROF_TOOLS);
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
-export const toolDefinitionsForModel = (opts: { review?: boolean; figures?: boolean } = {}) => TOOLS.filter((t) => (!t.review || opts.review === true) && (!t.figures || opts.figures === true) && (!t.noFigures || opts.figures !== true)).map((t) => ({ name: t.name, description: t.description, input_schema: t.input as unknown as Record<string, unknown> }));
+export const toolDefinitionsForModel = (opts: { review?: boolean; figures?: boolean; prof?: boolean } = {}) => TOOLS.filter((t) => (!t.review || opts.review === true) && (!t.prof || opts.prof === true) && (!t.figures || opts.figures === true) && (!t.noFigures || opts.figures !== true)).map((t) => ({ name: t.name, description: t.description, input_schema: t.input as unknown as Record<string, unknown> }));
 
 export type ToolOutcome = { ok: true; content: string } | { ok: false; reason: "unknown_tool" | "bad_input" | "failed"; content: string };
 
@@ -321,6 +386,7 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext,
   try { input = validate(def.input, rawInput ?? {}); } catch (e) {
     return { ok: false, reason: "bad_input", content: JSON.stringify({ error: `Invalid tool input: ${e instanceof ValidationError ? e.message : "bad input"}` }) };
   }
+  if (def.prof && ctx.profMode !== true) return { ok: false, reason: "unknown_tool", content: JSON.stringify({ error: "That tool does not exist. You may only use the tools provided." }) };
   if (def.noFigures && hasFigures(ctx.courseId)) return { ok: false, reason: "unknown_tool", content: JSON.stringify({ error: "That tool does not exist. You may only use the tools provided." }) };
   if (def.figures && !hasFigures(ctx.courseId)) return { ok: false, reason: "unknown_tool", content: JSON.stringify({ error: "There are no textbook figures for this course." }) };
   try {
