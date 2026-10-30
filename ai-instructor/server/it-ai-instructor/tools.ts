@@ -418,6 +418,12 @@ const PROF_TOOLS_2: ToolDef[] = [
     async run(i, c) { return profResult(await c.store.profCall!("finalize_assignment", { p_user: c.userId, p_course: c.courseId, p_assignment: i.assignment_id, p_session: c.sessionId, p_trigger: "professor" })); },
   },
   {
+    name: "prof_roster", prof: true,
+    description: "PROFESSOR MODE. The active students in this course with their student_id and name, for the professor's own use (for example to target a grade change). Do not read names out to anyone but the professor and do not list the whole roster unless asked.",
+    input: { type: "object", additionalProperties: false, properties: {} },
+    async run(_i, c) { return profResult(await c.store.profCall!("roster", { p_user: c.userId, p_course: c.courseId })); },
+  },
+  {
     name: "prof_hold_grade_change", prof: true,
     description: "PROFESSOR MODE. Queue a final course-grade override (a percentage 0 to 100) for one student by student_id. It is HELD FOR ONE HOUR before it takes effect so the professor can cancel it (undo the returned action_id within the hour). Always tell the professor it is on hold and when it applies.",
     input: { type: "object", additionalProperties: false, required: ["student_id", "percent"], properties: { student_id: text(80, 8), percent: num2(0, 100), note: text(500, 0) } },
