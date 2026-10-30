@@ -24,7 +24,7 @@ export type Semaphore = Admission;
 
 export interface Deps {
   store: Store; provider: LlmProvider; content: ContentRepo; log: Logger; kek: string; userHash: (id: string) => Promise<string>;
-  gate: Admission; control?: ControlCache; accessCache?: TtlCache<{ access: CourseAccess; stored: StoredKey | null }>; breakers?: BreakerSet; assessCache?: TtlCache<boolean>; admissionWaitMs?: number; now?: () => Date; rand?: () => number; sleep?: typeof realSleep; baseURL?: string; extraHosts?: string[]; platformKeyOwner?: string;
+  gate: Admission; control?: ControlCache; accessCache?: TtlCache<{ access: CourseAccess; stored: StoredKey | null }>; breakers?: BreakerSet; assessCache?: TtlCache<boolean>; admissionWaitMs?: number; now?: () => Date; rand?: () => number; sleep?: typeof realSleep; baseURL?: string; extraHosts?: string[]; platformKeyOwner?: string; subject?: string;
   timeouts?: Partial<{ firstEventMs: number; idleMs: number; totalMs: number; pollMs: number }>;
 }
 export interface Caller { userId: string }
@@ -186,7 +186,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
     dataP.catch(() => {});
     // ---- teaching directives (mode, hint-before-answer, instructor rules) and course retrieval, both decided here on the server ------
     const reviewOn = access.settings.reviewEnabled === true && !!store.reviewList;            // the review tools exist only when the course owner turned review on
-    const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn, subject: courseSubject(session.courseId) });
+    const dir = directives({ mode: req.mode, text: req.text, settings: access.settings, review: reviewOn, subject: deps.subject ?? courseSubject(session.courseId) });
     // A review walkthrough in progress: on "yes" the server hands the instructor the next missed question and draws it on the board.
     let walkDir = "";
     if (reviewOn && access.settings.reviewEnabled) {
