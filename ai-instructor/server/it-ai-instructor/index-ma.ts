@@ -18,6 +18,7 @@ import { Admission, BreakerSet, ControlCache, isMode, TtlCache } from "./resilie
 import { makeHandler } from "./handler.ts";
 import { MaSupabaseStore } from "./ma-store.ts";
 import { SupabaseContent } from "./content.ts";
+import { runAutopilot } from "./autopilot.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const salt = Deno.env.get("AI_INSTRUCTOR_LOG_SALT") ?? "";
@@ -32,7 +33,8 @@ const deps: Deps = {
 };
 
 // Tighten AI_INSTRUCTOR_ORIGINS to the production origins when deploying (comma separated). "*" matches the existing functions.
-Deno.serve(makeHandler(deps, {
+const autopilotSecret = Deno.env.get("AUTOPILOT_SECRET") ?? "";
+const mainHandler = makeHandler(deps, {
   // The shared AI_INSTRUCTOR_ORIGINS secret lists the Micro / International Trade sites only, so Macroeconomics' own origins are always added here.
   allowedOrigins: [...(Deno.env.get("AI_INSTRUCTOR_ORIGINS") ?? "*").split(",").map((x) => x.trim()), "https://macroeconomics.macronations.com", "https://www.macroeconomics.macronations.com"],
   authenticate: async (req) => {
@@ -41,4 +43,14 @@ Deno.serve(makeHandler(deps, {
     const { data } = await admin.auth.getUser(token);
     return data?.user?.id ?? null;
   },
-}));
+});
+// Scheduled autopilot run (pg_cron -> pg_net). Only a caller holding the shared secret reaches it; everything else goes to the normal handler.
+Deno.serve(async (req) => {
+  const given = req.headers.get("x-autopilot-secret");
+  if (given !== null) {
+    if (!autopilotSecret || given.length !== autopilotSecret.length || given !== autopilotSecret) return new Response("forbidden", { status: 403 });
+    const rep = await runAutopilot(deps).catch((e) => ({ error: String((e as Error)?.message ?? e).slice(0, 120) }));
+    return new Response(JSON.stringify(rep), { headers: { "content-type": "application/json" } });
+  }
+  return mainHandler(req);
+});

@@ -19,7 +19,11 @@ export interface CourseSettings {
   professorMode?: boolean;
   /** raw professor-mode columns (undefined when the course family has none); professorMode above is the effective value (on and not paused) */
   profOn?: boolean; profPaused?: boolean;
+  /** autopilot switches (migration 116); undefined when the course family has none */
+  autopilot?: Autopilot;
 }
+export interface Autopilot { remind: boolean; remind_hours: number; finalize_exams: boolean; finalize_delay_min: number; grade_assignments: boolean; grade_delay_min: number; answer_questions: boolean }
+export const DEFAULT_AUTOPILOT: Autopilot = { remind: false, remind_hours: 24, finalize_exams: false, finalize_delay_min: 60, grade_assignments: false, grade_delay_min: 60, answer_questions: false };
 export type ReviewKind = "exams" | "quizzes" | "assignments" | "arenas";
 export const REVIEW_KINDS: ReviewKind[] = ["exams", "quizzes", "assignments", "arenas"];
 export interface CourseAccess {
@@ -154,7 +158,7 @@ export interface WalkRecord { ref: string; title: string; items: import("./visua
 /** The fixed set of professor-mode database functions (ma_ai_prof_*). Nothing else can be reached through profCall. */
 export type ProfCall = "overview" | "set_exam_window" | "announce" | "finalize" | "exam_results" | "undo" | "recent"
   | "assignment_save" | "deadline" | "submissions" | "propose_feedback" | "finalize_assignment" | "grade_override" | "apply_due"
-  | "student_ask" | "student_questions" | "questions" | "answer_question" | "class_start" | "class_step" | "class_current" | "standing_set" | "standing_list" | "roster";
+  | "student_ask" | "student_questions" | "questions" | "answer_question" | "class_start" | "class_step" | "class_current" | "standing_set" | "standing_list" | "roster" | "autopilot_courses" | "autopilot_work";
 export const PROF_CALLS: readonly ProfCall[] = ["overview", "set_exam_window", "announce", "finalize", "exam_results", "undo", "recent",
   "assignment_save", "deadline", "submissions", "propose_feedback", "finalize_assignment", "grade_override", "apply_due",
-  "student_ask", "student_questions", "questions", "answer_question", "class_start", "class_step", "class_current", "standing_set", "standing_list", "roster"];
+  "student_ask", "student_questions", "questions", "answer_question", "class_start", "class_step", "class_current", "standing_set", "standing_list", "roster", "autopilot_courses", "autopilot_work"];

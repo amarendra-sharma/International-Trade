@@ -7,7 +7,7 @@ import { errBody, keyOwnerOf, type Caller, type Deps } from "./converse.ts";
 import { ProviderError } from "./provider.ts";
 import type { ErrorBody } from "./schemas.ts";
 import { DEFAULT_CONTROL, isMode } from "./resilience.ts";
-import type { CourseSettings, IngestChunk, ReviewKind, SessionMetrics } from "./store.ts";
+import type { Autopilot, CourseSettings, IngestChunk, ReviewKind, SessionMetrics } from "./store.ts";
 import { MODES, MODE_LABELS, effectiveMode, masteryEstimate, type Mode } from "./teaching.ts";
 
 export type Result = { status: number; body: unknown };
@@ -178,9 +178,10 @@ const settingsBody = (s: CourseSettings) => ({
   ai_policy: s.aiPolicy, allow_worked_solutions: s.allowWorkedSolutions, block_during_assessments: s.blockDuringAssessments, learning_record_days: s.learningRecordDays, store_mastery: s.storeMastery,
   review_enabled: s.reviewEnabled, review_show_solutions: s.reviewShowSolutions, payer: s.payer,
   scope_mode: s.scopeMode, use_textbook: s.useTextbook, review_kinds: s.reviewKinds,
+  ...(s.autopilot !== undefined && { autopilot: s.autopilot }),
   ...(s.profOn !== undefined && { professor_mode: s.profOn, prof_paused: s.profPaused === true }),
 });
-export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform"; scope_mode?: "course_only" | "open"; use_textbook?: boolean; review_kinds?: ReviewKind[]; professor_mode?: boolean; prof_paused?: boolean }): Promise<Result> {
+export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform"; scope_mode?: "course_only" | "open"; use_textbook?: boolean; review_kinds?: ReviewKind[]; professor_mode?: boolean; prof_paused?: boolean; autopilot?: Partial<Autopilot> }): Promise<Result> {
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change these settings.", false));
   if (p.payer !== undefined && (await deps.store.getRole(c.userId)) !== "admin") return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
@@ -189,7 +190,14 @@ export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { 
     const cur = await deps.store.getCourseAccess(c.userId, courseId, (deps.now ?? (() => new Date()))());
     if (cur.settings.profOn === undefined || !deps.store.profCall) return err(400, errBody("bad_request", "Professor mode is not available for this course.", false));
   }
+  let autopilot: Autopilot | undefined;
+  if (p.autopilot !== undefined) {
+    const cur = await deps.store.getCourseAccess(c.userId, courseId, (deps.now ?? (() => new Date()))());
+    if (cur.settings.autopilot === undefined || (cur.settings.profOn !== true && p.professor_mode !== true)) return err(400, errBody("bad_request", "Turn on professor mode first; autopilot is part of it.", false));
+    autopilot = { ...cur.settings.autopilot, ...p.autopilot };
+  }
   const s = await deps.store.setSettings(courseId, {
+    ...(autopilot && { autopilot }),
     ...(p.professor_mode !== undefined && { profOn: p.professor_mode }), ...(p.prof_paused !== undefined && { profPaused: p.prof_paused }),
     ...(p.enabled !== undefined && { enabled: p.enabled }), ...(p.retention_days !== undefined && { retentionDays: p.retention_days }),
     ...(p.student_daily_tokens !== undefined && { studentDailyTokens: p.student_daily_tokens }), ...(p.course_monthly_usd !== undefined && { courseMonthlyUsd: p.course_monthly_usd }), ...(p.model !== undefined && { model: p.model }),

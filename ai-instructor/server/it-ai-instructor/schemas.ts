@@ -65,6 +65,9 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
       payer: { type: "string", enum: ["instructor", "platform"] },
       // Asha as professor (migration 112): owner-only switch and kill switch
       professor_mode: { type: "boolean" }, prof_paused: { type: "boolean" },
+      autopilot: { type: "object", additionalProperties: false, properties: {
+        remind: { type: "boolean" }, remind_hours: { type: "integer", minimum: 1, maximum: 168 }, finalize_exams: { type: "boolean" }, finalize_delay_min: { type: "integer", minimum: 0, maximum: 10080 },
+        grade_assignments: { type: "boolean" }, grade_delay_min: { type: "integer", minimum: 0, maximum: 10080 }, answer_questions: { type: "boolean" } } },
       // what students may use the AI for (migration 104)
       scope_mode: { type: "string", enum: ["course_only", "open"] }, use_textbook: { type: "boolean" },
       review_kinds: { type: "array", maxItems: 4, items: { type: "string", enum: ["exams", "quizzes", "assignments", "arenas"] } },

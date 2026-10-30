@@ -1,10 +1,10 @@
 // supabase-store.ts - production Store: PostgREST reads/writes plus the it_ai_* functions, all via the service role.
 // No raw SQL is ever built from user input; every value travels as a typed parameter.
 import { LIMITS, MODELS, RETENTION } from "./config.ts";
-import { REVIEW_KINDS, PROF_CALLS } from "./store.ts";
+import { REVIEW_KINDS, PROF_CALLS, DEFAULT_AUTOPILOT } from "./store.ts";
 import { assertTransition } from "./session-machine.ts";
 import type { SessionState } from "./schemas.ts";
-import type { IngestChunk, MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, ProfCall, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
+import type { IngestChunk, MeetingRequest, ReviewDetail, ReviewList, ReviewReason, BeginResult, BeginTurnInput, CourseAccess, CourseSettings, Autopilot, ProfCall, FinishTurnInput, LearningEvent, MasteryRow, Message, PracticeItem, ProgressSummary, Role, SessionRow, Store, StoredKey, SessionMetrics } from "./store.ts";
 import { type Control, isMode } from "./resilience.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -26,8 +26,14 @@ export function mapSettings(s: Record<string, any>): CourseSettings {
     scopeMode: s.scope_mode === "course_only" ? "course_only" : "open", useTextbook: s.use_textbook !== false,
     reviewKinds: Array.isArray(s.review_kinds) ? REVIEW_KINDS.filter((k) => s.review_kinds.includes(k)) : [...REVIEW_KINDS],
     professorMode: s.professor_mode === true && s.prof_paused !== true,
+    ...("autopilot" in s && { autopilot: mapAutopilot(s.autopilot) }),
     ...("professor_mode" in s && { profOn: s.professor_mode === true, profPaused: s.prof_paused === true }),
   };
+}
+function mapAutopilot(a: any): Autopilot {
+  const d = DEFAULT_AUTOPILOT, n = (v: any, def: number, lo: number, hi: number) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : def;
+  return { remind: a?.remind === true, remind_hours: n(a?.remind_hours, d.remind_hours, 1, 168), finalize_exams: a?.finalize_exams === true, finalize_delay_min: n(a?.finalize_delay_min, d.finalize_delay_min, 0, 10080),
+    grade_assignments: a?.grade_assignments === true, grade_delay_min: n(a?.grade_delay_min, d.grade_delay_min, 0, 10080), answer_questions: a?.answer_questions === true };
 }
 const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -104,7 +110,7 @@ export class SupabaseStore implements Store {
   async setSettings(courseId: string, p: Partial<CourseSettings>): Promise<CourseSettings> {
     const cur = (await this.getCourseSettings(courseId));
     const next = { ...cur, ...p };
-    const { error } = await this.db.from(this.t("settings")).upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), ...("profOn" in p || "profPaused" in p ? { professor_mode: next.profOn === true, prof_paused: next.profPaused === true } : {}), ...("scopeMode" in p || "useTextbook" in p || "reviewKinds" in p ? { scope_mode: next.scopeMode, use_textbook: next.useTextbook, review_kinds: next.reviewKinds } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
+    const { error } = await this.db.from(this.t("settings")).upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), ...("autopilot" in p && cur.autopilot !== undefined ? { autopilot: next.autopilot } : {}), ...("profOn" in p || "profPaused" in p ? { professor_mode: next.profOn === true, prof_paused: next.profPaused === true } : {}), ...("scopeMode" in p || "useTextbook" in p || "reviewKinds" in p ? { scope_mode: next.scopeMode, use_textbook: next.useTextbook, review_kinds: next.reviewKinds } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
     if (error) throw new Error("db: settings save failed");
     if ("profOn" in p || "profPaused" in p) next.professorMode = next.profOn === true && next.profPaused !== true;
     return next;
