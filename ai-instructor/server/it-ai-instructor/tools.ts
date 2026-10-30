@@ -379,7 +379,7 @@ const PROF_TOOLS: ToolDef[] = [
   },
   {
     name: "prof_undo", prof: true,
-    description: "PROFESSOR MODE. Undo one earlier action by its action_id (an exam window change, an announcement, or a batch of finalized scores). Only when the professor asks.",
+    description: "PROFESSOR MODE. Undo or cancel one earlier action by its action_id from prof_recent_actions: exam window, announcement, finalized scores, assignment, deadline, proposed feedback, a held grade change (cancels it before it applies), an answered question, a class start or step, a standing instruction. Always look the id up with prof_recent_actions first. Only when the professor asks.",
     input: { type: "object", additionalProperties: false, required: ["action_id"], properties: { action_id: { type: "number", minimum: 1, maximum: 1e12 } } },
     async run(i, c) { return profResult(await c.store.profCall!("undo", { p_user: c.userId, p_course: c.courseId, p_action: Math.floor(i.action_id) })); },
   },
