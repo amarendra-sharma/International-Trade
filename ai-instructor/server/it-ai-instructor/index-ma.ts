@@ -33,7 +33,8 @@ const deps: Deps = {
 
 // Tighten AI_INSTRUCTOR_ORIGINS to the production origins when deploying (comma separated). "*" matches the existing functions.
 Deno.serve(makeHandler(deps, {
-  allowedOrigins: (Deno.env.get("AI_INSTRUCTOR_ORIGINS") ?? "*").split(",").map((x) => x.trim()),
+  // The shared AI_INSTRUCTOR_ORIGINS secret lists the Micro / International Trade sites only, so Macroeconomics' own origins are always added here.
+  allowedOrigins: [...(Deno.env.get("AI_INSTRUCTOR_ORIGINS") ?? "*").split(",").map((x) => x.trim()), "https://macroeconomics.macronations.com", "https://www.macroeconomics.macronations.com"],
   authenticate: async (req) => {
     const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
     if (!token) return null;
