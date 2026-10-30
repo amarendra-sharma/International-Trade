@@ -375,3 +375,27 @@ export async function setControl(deps: Deps, c: Caller, b: { mode?: string; max_
   deps.log("warn", "control_changed", { user: await deps.userHash(c.userId), reason: `mode=${next.mode} max=${next.maxActiveSessions ?? "none"}` });
   return ok({ mode: next.mode, max_active_sessions: next.maxActiveSessions, message: next.message, course_max_generating: next.courseMaxGenerating ?? null });
 }
+
+export async function profSchedule(deps: Deps, c: Caller, courseId: string, op: "get" | "set" | "clear", b?: { title: string; outline: string[]; days: number[]; start: string; minutes: number; tz: string; auto?: boolean }): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const m = await canManage(deps, c, courseId);
+  if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change the class schedule.", false));
+  const base = { p_user: c.userId, p_course: courseId };
+  const r = op === "get" ? await deps.store.profCall("schedule_get", base)
+    : op === "clear" ? await deps.store.profCall("schedule_clear", base)
+    : await deps.store.profCall("schedule_set", { ...base, p_title: b!.title, p_outline: b!.outline.map((t) => ({ title: t })), p_days: b!.days, p_start: b!.start, p_minutes: b!.minutes, p_tz: b!.tz, p_auto: b!.auto !== false });
+  if (r?.allowed === false || r?.reason === "not_allowed") return err(403, errBody("forbidden", "Turn on professor mode first, then try again.", false));
+  if (op === "set" && !r?.ok) return err(400, errBody("bad_request", "That schedule is not valid (check the time zone, days, length and sections).", false));
+  return ok(op === "get" ? { schedule: r?.schedule ?? null } : { saved: true });
+}
+export async function profAttendance(deps: Deps, c: Caller, courseId: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("attendance", { p_user: c.userId, p_course: courseId });
+  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see attendance.", false));
+  return ok({ enrolled: r.enrolled ?? 0, classes: r.classes ?? [] });
+}
+export async function classStatus(deps: Deps, c: Caller, courseId: string, join: boolean): Promise<Result> {
+  if (!deps.store.profCall) return ok({ live: false });
+  const r = await deps.store.profCall("class_ping", { p_user: c.userId, p_course: courseId, p_join: join });
+  return ok(r?.live ? { live: true, title: r.title, step: r.step, sections: r.sections, current: r.current, ends_at: r.ends_at, student: r.student === true, joined: r.joined === true, present: r.present === true } : { live: false });
+}

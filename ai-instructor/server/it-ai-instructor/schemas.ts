@@ -82,6 +82,15 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
   },
   list_review_requests: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["list_review_requests"] }, course_id: uuid } },
   // professor mode audit view (staff only): the AI instructor's recent actions and an undo button
+  prof_schedule_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_schedule_get"] }, course_id: uuid } },
+  prof_schedule_clear: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_schedule_clear"] }, course_id: uuid } },
+  prof_attendance: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_attendance"] }, course_id: uuid } },
+  class_status: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["class_status"] }, course_id: uuid, join: { type: "boolean" } } },
+  prof_schedule_set: { type: "object", additionalProperties: false, required: ["action", "course_id", "title", "outline", "days", "start", "minutes", "tz"], properties: {
+    action: { type: "string", enum: ["prof_schedule_set"] }, course_id: uuid, title: { type: "string", minLength: 3, maxLength: 160 },
+    outline: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", minLength: 1, maxLength: 400 } },
+    days: { type: "array", minItems: 1, maxItems: 7, uniqueItems: true, items: { type: "integer", minimum: 0, maximum: 6 } },
+    start: { type: "string", pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }, minutes: { type: "integer", minimum: 10, maximum: 240 }, tz: { type: "string", maxLength: 64 }, auto: { type: "boolean" } } },
   prof_log: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_log"] }, course_id: uuid } },
   prof_undo: { type: "object", additionalProperties: false, required: ["action", "course_id", "action_id"], properties: { action: { type: "string", enum: ["prof_undo"] }, course_id: uuid, action_id: { type: "integer", minimum: 1, maximum: 1000000000000 } } },
   complete_review_request: { type: "object", additionalProperties: false, required: ["action", "course_id", "request_id"], properties: { action: { type: "string", enum: ["complete_review_request"] }, course_id: uuid, request_id: uuid } },

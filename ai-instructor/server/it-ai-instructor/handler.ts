@@ -70,6 +70,11 @@ export function makeHandler(deps: Deps, opts: HttpOptions) {
         case "list_review_requests": r = await A.listReviewRequests(deps, caller, body.course_id); break;
         case "complete_review_request": r = await A.completeReviewRequest(deps, caller, body.course_id, body.request_id); break;
         case "ingest_materials": r = await A.ingestMaterials(deps, caller, body.course_id, body as never); break;
+        case "prof_schedule_get": r = await A.profSchedule(deps, caller, body.course_id, "get"); break;
+        case "prof_schedule_set": r = await A.profSchedule(deps, caller, body.course_id, "set", body); break;
+        case "prof_schedule_clear": r = await A.profSchedule(deps, caller, body.course_id, "clear"); break;
+        case "prof_attendance": r = await A.profAttendance(deps, caller, body.course_id); break;
+        case "class_status": r = await A.classStatus(deps, caller, body.course_id, body.join === true); break;
         case "prof_log": r = await A.profLog(deps, caller, body.course_id); break;
         case "prof_undo": r = await A.profUndo(deps, caller, body.course_id, body.action_id); break;
         case "get_settings": r = await A.getSettings(deps, caller, body.course_id); break;
