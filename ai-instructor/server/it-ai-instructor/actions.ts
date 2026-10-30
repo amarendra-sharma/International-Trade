@@ -178,13 +178,19 @@ const settingsBody = (s: CourseSettings) => ({
   ai_policy: s.aiPolicy, allow_worked_solutions: s.allowWorkedSolutions, block_during_assessments: s.blockDuringAssessments, learning_record_days: s.learningRecordDays, store_mastery: s.storeMastery,
   review_enabled: s.reviewEnabled, review_show_solutions: s.reviewShowSolutions, payer: s.payer,
   scope_mode: s.scopeMode, use_textbook: s.useTextbook, review_kinds: s.reviewKinds,
+  ...(s.profOn !== undefined && { professor_mode: s.profOn, prof_paused: s.profPaused === true }),
 });
-export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform"; scope_mode?: "course_only" | "open"; use_textbook?: boolean; review_kinds?: ReviewKind[] }): Promise<Result> {
+export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform"; scope_mode?: "course_only" | "open"; use_textbook?: boolean; review_kinds?: ReviewKind[]; professor_mode?: boolean; prof_paused?: boolean }): Promise<Result> {
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change these settings.", false));
   if (p.payer !== undefined && (await deps.store.getRole(c.userId)) !== "admin") return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
   if (p.payer === "platform" && !deps.platformKeyOwner && !(await deps.store.platformKeyOwner?.())) return err(409, errBody("bad_request", "No platform key is saved yet. An administrator must save an AI key first.", false));
+  if (p.professor_mode !== undefined || p.prof_paused !== undefined) {
+    const cur = await deps.store.getCourseAccess(c.userId, courseId, (deps.now ?? (() => new Date()))());
+    if (cur.settings.profOn === undefined || !deps.store.profCall) return err(400, errBody("bad_request", "Professor mode is not available for this course.", false));
+  }
   const s = await deps.store.setSettings(courseId, {
+    ...(p.professor_mode !== undefined && { profOn: p.professor_mode }), ...(p.prof_paused !== undefined && { profPaused: p.prof_paused }),
     ...(p.enabled !== undefined && { enabled: p.enabled }), ...(p.retention_days !== undefined && { retentionDays: p.retention_days }),
     ...(p.student_daily_tokens !== undefined && { studentDailyTokens: p.student_daily_tokens }), ...(p.course_monthly_usd !== undefined && { courseMonthlyUsd: p.course_monthly_usd }), ...(p.model !== undefined && { model: p.model }),
     ...(p.ai_policy !== undefined && { aiPolicy: p.ai_policy }), ...(p.allow_worked_solutions !== undefined && { allowWorkedSolutions: p.allow_worked_solutions }),

@@ -26,6 +26,7 @@ export function mapSettings(s: Record<string, any>): CourseSettings {
     scopeMode: s.scope_mode === "course_only" ? "course_only" : "open", useTextbook: s.use_textbook !== false,
     reviewKinds: Array.isArray(s.review_kinds) ? REVIEW_KINDS.filter((k) => s.review_kinds.includes(k)) : [...REVIEW_KINDS],
     professorMode: s.professor_mode === true && s.prof_paused !== true,
+    ...("professor_mode" in s && { profOn: s.professor_mode === true, profPaused: s.prof_paused === true }),
   };
 }
 const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
@@ -103,8 +104,9 @@ export class SupabaseStore implements Store {
   async setSettings(courseId: string, p: Partial<CourseSettings>): Promise<CourseSettings> {
     const cur = (await this.getCourseSettings(courseId));
     const next = { ...cur, ...p };
-    const { error } = await this.db.from(this.t("settings")).upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), ...("scopeMode" in p || "useTextbook" in p || "reviewKinds" in p ? { scope_mode: next.scopeMode, use_textbook: next.useTextbook, review_kinds: next.reviewKinds } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
+    const { error } = await this.db.from(this.t("settings")).upsert({ course_id: courseId, enabled: next.enabled, retention_days: next.retentionDays, student_daily_tokens: next.studentDailyTokens, course_monthly_usd: next.courseMonthlyUsd, model: next.model, ai_policy: next.aiPolicy, allow_worked_solutions: next.allowWorkedSolutions, block_during_assessments: next.blockDuringAssessments, learning_record_days: next.learningRecordDays, store_mastery: next.storeMastery, ...("reviewEnabled" in p || "reviewShowSolutions" in p ? { review_enabled: next.reviewEnabled, review_show_solutions: next.reviewShowSolutions } : {}), ...("payer" in p ? { payer: next.payer } : {}), ...("profOn" in p || "profPaused" in p ? { professor_mode: next.profOn === true, prof_paused: next.profPaused === true } : {}), ...("scopeMode" in p || "useTextbook" in p || "reviewKinds" in p ? { scope_mode: next.scopeMode, use_textbook: next.useTextbook, review_kinds: next.reviewKinds } : {}), updated_at: new Date().toISOString() }, { onConflict: "course_id" });
     if (error) throw new Error("db: settings save failed");
+    if ("profOn" in p || "profPaused" in p) next.professorMode = next.profOn === true && next.profPaused !== true;
     return next;
   }
   private async getCourseSettings(courseId: string): Promise<CourseSettings> {

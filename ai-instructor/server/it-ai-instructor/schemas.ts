@@ -63,6 +63,8 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
       // graded-work review (migration 005): off by default; the correct answers are shown to the AI only when review_show_solutions is true and ai_policy is full
       review_enabled: { type: "boolean" }, review_show_solutions: { type: "boolean" },
       payer: { type: "string", enum: ["instructor", "platform"] },
+      // Asha as professor (migration 112): owner-only switch and kill switch
+      professor_mode: { type: "boolean" }, prof_paused: { type: "boolean" },
       // what students may use the AI for (migration 104)
       scope_mode: { type: "string", enum: ["course_only", "open"] }, use_textbook: { type: "boolean" },
       review_kinds: { type: "array", maxItems: 4, items: { type: "string", enum: ["exams", "quizzes", "assignments", "arenas"] } },

@@ -17,6 +17,8 @@ export interface CourseSettings {
   scopeMode: "course_only" | "open"; useTextbook: boolean; reviewKinds: ReviewKind[];
   // professor mode (migration 112, Macroeconomics): the course owner lets the AI act for the course staff. Staff sessions only.
   professorMode?: boolean;
+  /** raw professor-mode columns (undefined when the course family has none); professorMode above is the effective value (on and not paused) */
+  profOn?: boolean; profPaused?: boolean;
 }
 export type ReviewKind = "exams" | "quizzes" | "assignments" | "arenas";
 export const REVIEW_KINDS: ReviewKind[] = ["exams", "quizzes", "assignments", "arenas"];
