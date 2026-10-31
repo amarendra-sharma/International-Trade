@@ -83,6 +83,8 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
   list_review_requests: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["list_review_requests"] }, course_id: uuid } },
   // professor mode audit view (staff only): the AI instructor's recent actions and an undo button
   prof_schedule_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_schedule_get"] }, course_id: uuid } },
+  prof_term_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_term_get"] }, course_id: uuid } },
+  prof_audit_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_audit_get"] }, course_id: uuid } },
   prof_schedule_clear: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_schedule_clear"] }, course_id: uuid } },
   prof_attendance: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_attendance"] }, course_id: uuid } },
   class_status: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["class_status"] }, course_id: uuid, join: { type: "boolean" } } },

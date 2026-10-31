@@ -394,6 +394,19 @@ export async function profAttendance(deps: Deps, c: Caller, courseId: string): P
   if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see attendance.", false));
   return ok({ enrolled: r.enrolled ?? 0, classes: r.classes ?? [] });
 }
+export async function profTerm(deps: Deps, c: Caller, courseId: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const syl = await deps.store.profCall("syllabus_get", { p_user: c.userId, p_course: courseId });
+  const lec = await deps.store.profCall("lectures_get", { p_user: c.userId, p_course: courseId });
+  if (lec?.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see the term plan.", false));
+  return ok({ syllabus: syl?.found ? { title: syl.title, body: syl.body, ends_at: syl.ends_at ?? null, late_pct_per_day: syl.late_pct_per_day ?? 0, late_max_days: syl.late_max_days ?? 0 } : null, lectures: lec?.sessions ?? [] });
+}
+export async function profAudit(deps: Deps, c: Caller, courseId: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("audit_export", { p_user: c.userId, p_course: courseId, p_days: 400 });
+  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can export the audit log.", false));
+  return ok({ actions: r.actions ?? [] });
+}
 export async function classStatus(deps: Deps, c: Caller, courseId: string, join: boolean): Promise<Result> {
   if (!deps.store.profCall) return ok({ live: false });
   const r = await deps.store.profCall("class_ping", { p_user: c.userId, p_course: courseId, p_join: join });
