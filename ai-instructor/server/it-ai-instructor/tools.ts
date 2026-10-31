@@ -347,6 +347,9 @@ const PROF_NEXT: Record<string, string> = {
   too_many_open: "This student already has five open questions for the professor. Ask them to wait for answers.",
   already_applied_undo_the_applied_change: "That grade change was already applied. Look up the applied action with prof_recent_actions and undo that one instead.",
 };
+// An assignment must carry its questions: students cannot "solve the problems in chapter 7", there is no textbook problem list to point at.
+const hasQuestions = (s: string): boolean => s.length >= 400 && /(^|\n)\s*(\(?1[.):]|question 1|problem 1|q1)/i.test(s) && /(^|\n)\s*(\(?2[.):]|question 2|problem 2|q2)/i.test(s);
+const NEEDS_Q = { ok: false, reason: "assignment_needs_questions", next_step: "The assignment text must contain the actual questions: at least 3 numbered, self-contained questions (1., 2., 3. ...), each with all numbers and context a student needs and its point value, 400 characters or more in total, plus what to submit. Never refer to problems elsewhere. Write fresh problems in the style of the course (prof_bank_samples shows the style; do not copy bank questions word for word, because the exams draw from that bank). Then call this tool again." };
 const profResult = (r: any): Record<string, unknown> => r && r.ok === false || r && r.allowed === false ? { ...r, next_step: PROF_NEXT[String(r.reason)] ?? "That was refused. Say so and do not retry." } : (r ?? {});
 const isoSchema: Schema = { type: "string", minLength: 20, maxLength: 40, pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$" };
 const PROF_TOOLS: ToolDef[] = [
@@ -398,9 +401,9 @@ const num2 = (min: number, max: number): Schema => ({ type: "number", minimum: m
 const PROF_TOOLS_2: ToolDef[] = [
   {
     name: "prof_assignment_save", prof: true,
-    description: "PROFESSOR MODE. Create an assignment (omit assignment_id) or change one (give assignment_id from prof_overview). Fields you omit stay unchanged on an update. Due time is ISO 8601 with a UTC offset. A new assignment is a DRAFT unless publish is true. Tell the professor what you created or changed and offer to undo.",
+    description: "PROFESSOR MODE. Create an assignment (omit assignment_id) or change one (give assignment_id from prof_overview). Fields you omit stay unchanged on an update. Due time is ISO 8601 with a UTC offset. A new assignment is a DRAFT unless publish is true. The instructions MUST contain the full questions (see rules in the tool result if refused). Tell the professor what you created or changed and offer to undo.",
     input: { type: "object", additionalProperties: false, properties: { assignment_id: { type: "string", pattern: UUID }, title: text(160, 3), instructions: text(8000, 1), points: num2(1, 1000), due_at: isoSchema, publish: { type: "boolean" } } },
-    async run(i, c) { return profResult(await c.store.profCall!("assignment_save", { p_user: c.userId, p_course: c.courseId, p_assignment: i.assignment_id ?? null, p_title: i.title ?? null, p_instructions: i.instructions ?? null, p_points: i.points ?? null, p_due: i.due_at ?? null, p_publish: i.publish ?? null, p_session: c.sessionId, p_trigger: "professor" })); },
+    async run(i, c) { if (i.instructions !== undefined && !hasQuestions(String(i.instructions))) return NEEDS_Q; if (i.instructions === undefined && !i.assignment_id) return NEEDS_Q; return profResult(await c.store.profCall!("assignment_save", { p_user: c.userId, p_course: c.courseId, p_assignment: i.assignment_id ?? null, p_title: i.title ?? null, p_instructions: i.instructions ?? null, p_points: i.points ?? null, p_due: i.due_at ?? null, p_publish: i.publish ?? null, p_session: c.sessionId, p_trigger: "professor" })); },
   },
   {
     name: "prof_set_deadline", prof: true,
@@ -500,18 +503,24 @@ const PROF_TOOLS_2: ToolDef[] = [
   },
   {
     name: "prof_term_schedule", prof: true,
-    description: "PROFESSOR MODE (term engine). Schedule the whole term's coursework in ONE call, undoable as one action. quizzes: closing time for each chapter quiz (chapter number, closes_at). arenas: closing time for each arena (slug, closes_at). The arena slugs available are: adas-lab, bank-lab, cpi-lab, fiscal-lab, fx-arena, gdp-builder, growth-lab, inflation-lab, islm-lab, labor-market-lab, loanable-funds-lab, policy-mix-arena. assignments: new published assignments (title, instructions of at least 10 characters, points 1 to 1000, due_at). All times ISO 8601 with a UTC offset. Quizzes and arenas count toward the grade only for the chapters and arenas that have a closing time, so schedule every one you want graded. Assignments are graded by you with prof_assignment_submissions and prof_propose_feedback, and the autopilot does it by itself. The late policy in the syllabus is applied automatically.",
+    description: "PROFESSOR MODE (term engine). Schedule the whole term's coursework in ONE call, undoable as one action. quizzes: closing time for each chapter quiz (chapter number, closes_at). arenas: closing time for each arena (slug, closes_at). The arena slugs available are: adas-lab, bank-lab, cpi-lab, fiscal-lab, fx-arena, gdp-builder, growth-lab, inflation-lab, islm-lab, labor-market-lab, loanable-funds-lab, policy-mix-arena. assignments: new published assignments (title, instructions that contain the FULL numbered questions with their point values, at least 3 questions and 400 characters, points 1 to 1000, due_at). All times ISO 8601 with a UTC offset. Quizzes and arenas count toward the grade only for the chapters and arenas that have a closing time, so schedule every one you want graded. Assignments are graded by you with prof_assignment_submissions and prof_propose_feedback, and the autopilot does it by itself. The late policy in the syllabus is applied automatically.",
     input: { type: "object", additionalProperties: false, properties: {
       quizzes: { type: "array", maxItems: 40, items: { type: "object", additionalProperties: false, required: ["chapter", "closes_at"], properties: { chapter: { type: "integer", minimum: 1, maximum: 60 }, closes_at: isoSchema } } },
       arenas: { type: "array", maxItems: 40, items: { type: "object", additionalProperties: false, required: ["slug", "closes_at"], properties: { slug: { type: "string", pattern: "^[a-z0-9_-]{2,60}$" }, closes_at: isoSchema } } },
       assignments: { type: "array", maxItems: 25, items: { type: "object", additionalProperties: false, required: ["title", "instructions", "points", "due_at"], properties: { title: text(160, 3), instructions: text(6000, 10), points: num2(1, 1000), due_at: isoSchema } } } } },
-    async run(i, c) { return profResult(await c.store.profCall!("term_schedule", { p_user: c.userId, p_course: c.courseId, p_quizzes: i.quizzes ?? [], p_arenas: i.arenas ?? [], p_assignments: i.assignments ?? [], p_session: c.sessionId, p_trigger: "professor" })); },
+    async run(i, c) { for (const a of (i.assignments ?? []) as { instructions: string }[]) if (!hasQuestions(String(a.instructions))) return NEEDS_Q; return profResult(await c.store.profCall!("term_schedule", { p_user: c.userId, p_course: c.courseId, p_quizzes: i.quizzes ?? [], p_arenas: i.arenas ?? [], p_assignments: i.assignments ?? [], p_session: c.sessionId, p_trigger: "professor" })); },
   },
   {
     name: "prof_audit_export", prof: true,
     description: "PROFESSOR MODE. The log of everything the AI professor did in this course (what, when, by whom: you in chat or the scheduler), most recent first. days defaults to 120.",
     input: { type: "object", additionalProperties: false, properties: { days: { type: "integer", minimum: 1, maximum: 400 } } },
     async run(i, c) { return profResult(await c.store.profCall!("audit_export", { p_user: c.userId, p_course: c.courseId, p_days: i.days ?? 120 })); },
+  },
+  {
+    name: "prof_bank_samples", prof: true,
+    description: "PROFESSOR MODE. A few sample questions from the course question bank for one chapter (written and numeric types), so that the problems you write match the course's style and difficulty. These same questions appear in the exams, so use them only as a model: write new problems, do not copy them word for word into assignments.",
+    input: { type: "object", additionalProperties: false, required: ["chapter"], properties: { chapter: { type: "integer", minimum: 1, maximum: 40 }, limit: { type: "integer", minimum: 1, maximum: 10 } } },
+    async run(i, c) { return profResult(await c.store.profCall!("bank_samples", { p_user: c.userId, p_course: c.courseId, p_chapter: i.chapter, p_limit: i.limit ?? 6 })); },
   },
   {
     name: "prof_final_preview", prof: true,
