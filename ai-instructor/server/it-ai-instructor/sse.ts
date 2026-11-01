@@ -7,8 +7,10 @@ export function sseResponse(headers: HeadersInit, run: (emit: (e: SseEvent) => v
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (e: SseEvent) => { if (closed) return; try { controller.enqueue(enc.encode(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`)); } catch { closed = true; } };
+      // Keep-alive comment so a long tool-running turn never looks idle to a proxy; clients ignore comment lines.
+      const hb = setInterval(() => { if (closed) return; try { controller.enqueue(enc.encode(": ping\n\n")); } catch { closed = true; } }, 10_000);
       try { await run(emit, ac.signal); } catch { emit({ event: "error", data: { error: "internal", message: "Something went wrong on our side.", retryable: false } }); }
-      finally { if (!closed) { closed = true; try { controller.close(); } catch { /* already closed */ } } }
+      finally { clearInterval(hb); if (!closed) { closed = true; try { controller.close(); } catch { /* already closed */ } } }
     },
     cancel() { closed = true; ac.abort(new DOMException("client disconnected", "AbortError")); },     // student interrupted / closed the tab
   });
