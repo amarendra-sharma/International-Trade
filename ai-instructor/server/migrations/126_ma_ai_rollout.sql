@@ -148,7 +148,8 @@ end $$;
 -- usage report (staff of the course) and a platform-wide billing view --------------------------------------------------
 create or replace function public.ma_ai_prof_usage(p_user uuid, p_course uuid) returns jsonb language plpgsql stable security definer set search_path = public as $$
 begin
-  if not public.ma_ai_prof_read_ok(p_user, p_course, 'grade') then return jsonb_build_object('allowed', false); end if;
+  -- platform admin only: instructors do not see AI cost
+  if not exists (select 1 from public.ma_person pp where pp.user_id = p_user::text and pp.role::text = 'admin') then return jsonb_build_object('allowed', false); end if;
   return jsonb_build_object('allowed', true,
     'budget_usd', (select course_monthly_usd from public.ma_ai_settings where course_id = p_course),
     'month_cost_usd', coalesce((select round(sum(cost_micro_usd) / 1e6, 4) from public.ma_ai_usage where course_id = p_course and created_at >= date_trunc('month', now())), 0),

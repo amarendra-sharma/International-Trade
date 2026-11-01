@@ -299,7 +299,7 @@ export async function profInbox(deps: Deps, c: Caller, courseId: string): Promis
 export async function profUsage(deps: Deps, c: Caller, courseId: string): Promise<Result> {
   if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
   const r = await deps.store.profCall("usage", { p_user: c.userId, p_course: courseId });
-  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see this.", false));
+  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Usage and cost are visible to the platform administrator only.", false));
   const { allowed: _a, ...rest } = r as Record<string, unknown>;
   return ok(rest);
 }

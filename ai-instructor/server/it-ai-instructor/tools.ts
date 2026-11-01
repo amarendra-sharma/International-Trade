@@ -547,12 +547,6 @@ const PROF_TOOLS_2: ToolDef[] = [
     async run(i, c) { return profResult(await c.store.profCall!("makeup", { p_user: c.userId, p_course: c.courseId, p_action: i.action, p_student: i.student ?? null, p_reason: i.reason ?? null, p_session: c.sessionId, p_trigger: "professor" })); },
   },
   {
-    name: "prof_usage", prof: true,
-    description: "PROFESSOR MODE. AI usage and cost for this course: this month's cost against the monthly cap, total cost, turns, enrolled students, a daily series and per-person totals.",
-    input: { type: "object", additionalProperties: false, properties: {} },
-    async run(_i, c) { return profResult(await c.store.profCall!("usage", { p_user: c.userId, p_course: c.courseId })); },
-  },
-  {
     name: "prof_bank_samples", prof: true,
     description: "PROFESSOR MODE. A few sample questions from the course question bank for one chapter (written and numeric types), so that the problems you write match the course's style and difficulty. These same questions appear in the exams, so use them only as a model: write new problems, do not copy them word for word into assignments.",
     input: { type: "object", additionalProperties: false, required: ["chapter"], properties: { chapter: { type: "integer", minimum: 1, maximum: 40 }, limit: { type: "integer", minimum: 1, maximum: 10 } } },
