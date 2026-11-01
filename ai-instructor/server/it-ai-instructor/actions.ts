@@ -171,10 +171,11 @@ export async function getSettings(deps: Deps, c: Caller, courseId: string): Prom
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can view these settings.", false));
   const a = await deps.store.getCourseAccess(c.userId, courseId, (deps.now ?? (() => new Date()))());
-  return ok(settingsBody(a.settings));
+  return ok(settingsBody(a.settings, (await deps.store.getRole(c.userId)) === "admin"));
 }
-const settingsBody = (s: CourseSettings) => ({
-  enabled: s.enabled, retention_days: s.retentionDays, student_daily_tokens: s.studentDailyTokens, course_monthly_usd: s.courseMonthlyUsd, model: s.model,
+// The monthly cost cap is shown (and changeable) only by the platform administrator; instructors do not see AI cost.
+const settingsBody = (s: CourseSettings, admin = false) => ({
+  enabled: s.enabled, retention_days: s.retentionDays, student_daily_tokens: s.studentDailyTokens, ...(admin && { course_monthly_usd: s.courseMonthlyUsd }), model: s.model,
   ai_policy: s.aiPolicy, allow_worked_solutions: s.allowWorkedSolutions, block_during_assessments: s.blockDuringAssessments, learning_record_days: s.learningRecordDays, store_mastery: s.storeMastery,
   review_enabled: s.reviewEnabled, review_show_solutions: s.reviewShowSolutions, payer: s.payer,
   scope_mode: s.scopeMode, use_textbook: s.useTextbook, review_kinds: s.reviewKinds,
@@ -184,7 +185,9 @@ const settingsBody = (s: CourseSettings) => ({
 export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { enabled?: boolean; retention_days?: number; student_daily_tokens?: number; course_monthly_usd?: number; model?: string; ai_policy?: "full" | "hints_only" | "concepts_only"; allow_worked_solutions?: boolean; block_during_assessments?: boolean; learning_record_days?: number; store_mastery?: boolean; review_enabled?: boolean; review_show_solutions?: boolean; payer?: "instructor" | "platform"; scope_mode?: "course_only" | "open"; use_textbook?: boolean; review_kinds?: ReviewKind[]; professor_mode?: boolean; prof_paused?: boolean; autopilot?: Partial<Autopilot> }): Promise<Result> {
   const m = await canManage(deps, c, courseId);
   if (!m.yes) return err(403, errBody("forbidden", "Only the course owner can change these settings.", false));
-  if (p.payer !== undefined && (await deps.store.getRole(c.userId)) !== "admin") return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
+  const isAdmin = (await deps.store.getRole(c.userId)) === "admin";
+  if (p.course_monthly_usd !== undefined && !isAdmin) return err(403, errBody("forbidden", "Only a platform administrator can change the monthly cost cap.", false));
+  if (p.payer !== undefined && !isAdmin) return err(403, errBody("forbidden", "Only a platform administrator can change who pays for the AI instructor.", false));
   if (p.payer === "platform" && !deps.platformKeyOwner && !(await deps.store.platformKeyOwner?.())) return err(409, errBody("bad_request", "No platform key is saved yet. An administrator must save an AI key first.", false));
   if (p.professor_mode !== undefined || p.prof_paused !== undefined) {
     const cur = await deps.store.getCourseAccess(c.userId, courseId, (deps.now ?? (() => new Date()))());
@@ -207,7 +210,7 @@ export async function setSettings(deps: Deps, c: Caller, courseId: string, p: { 
   });
   deps.accessCache?.clear?.();     // settings changed: drop cached access so the new rules apply on the next turn
   deps.log("info", "settings_changed", { course_id: courseId, user: await deps.userHash(c.userId) });
-  return ok(settingsBody(s));
+  return ok(settingsBody(s, isAdmin));
 }
 
 // ---- graded-work review: status and consent (the student's own action), the meeting-request fallback, and the staff view of those requests --------------------------
