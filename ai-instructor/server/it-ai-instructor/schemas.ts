@@ -80,6 +80,10 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
     type: "object", additionalProperties: false, required: ["action", "course_id", "with", "topic"],
     properties: { action: { type: "string", enum: ["request_meeting"] }, course_id: uuid, with: { type: "string", enum: ["ta", "professor"] }, topic: { type: "string", minLength: 1, maxLength: 200 }, note: { type: "string", maxLength: 500 } },
   },
+  request_appeal: { type: "object", additionalProperties: false, required: ["action", "course_id", "item_kind", "note"], properties: { action: { type: "string", enum: ["request_appeal"] }, course_id: uuid, item_kind: { type: "string", enum: ["exam", "quiz", "assignment", "arena", "final_grade", "other"] }, item_title: { type: "string", maxLength: 160 }, note: { type: "string", minLength: 10, maxLength: 500 } } },
+  prof_inbox_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_inbox_get"] }, course_id: uuid } },
+  prof_usage_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_usage_get"] }, course_id: uuid } },
+  prof_class_mute: { type: "object", additionalProperties: false, required: ["action", "course_id", "student", "mode"], properties: { action: { type: "string", enum: ["prof_class_mute"] }, course_id: uuid, student: { type: "string", minLength: 1, maxLength: 120 }, mode: { type: "string", enum: ["mute", "unmute", "remove", "restore"] } } },
   list_review_requests: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["list_review_requests"] }, course_id: uuid } },
   // professor mode audit view (staff only): the AI instructor's recent actions and an undo button
   prof_schedule_get: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_schedule_get"] }, course_id: uuid } },
@@ -95,7 +99,7 @@ export const REQUEST_SCHEMAS: Record<string, Schema> = {
     start: { type: "string", pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }, minutes: { type: "integer", minimum: 10, maximum: 240 }, tz: { type: "string", maxLength: 64 }, auto: { type: "boolean" } } },
   prof_log: { type: "object", additionalProperties: false, required: ["action", "course_id"], properties: { action: { type: "string", enum: ["prof_log"] }, course_id: uuid } },
   prof_undo: { type: "object", additionalProperties: false, required: ["action", "course_id", "action_id"], properties: { action: { type: "string", enum: ["prof_undo"] }, course_id: uuid, action_id: { type: "integer", minimum: 1, maximum: 1000000000000 } } },
-  complete_review_request: { type: "object", additionalProperties: false, required: ["action", "course_id", "request_id"], properties: { action: { type: "string", enum: ["complete_review_request"] }, course_id: uuid, request_id: uuid } },
+  complete_review_request: { type: "object", additionalProperties: false, required: ["action", "course_id", "request_id"], properties: { action: { type: "string", enum: ["complete_review_request"] }, course_id: uuid, request_id: uuid, resolution: { type: "string", maxLength: 1000 } } },
   // course materials upload (instructor/owner only): batches of pre-chunked text for a source, e.g. lecture slides
   ingest_materials: {
     type: "object", additionalProperties: false, required: ["action", "course_id", "source_id", "title", "kind", "chunks"],

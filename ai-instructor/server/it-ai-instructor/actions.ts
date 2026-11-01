@@ -238,7 +238,7 @@ export async function reviewStatus(deps: Deps, c: Caller, courseId: string): Pro
     review_enabled: a.settings.reviewEnabled && !!s.reviewConsentGet, granted: consent?.granted === true, text_version: REVIEW_CONSENT_VERSION,
     consent_text: reviewConsentText({ provider: stored?.provider ?? "anthropic", solutions, retentionDays: a.settings.retentionDays }),
     solutions_shown: solutions, can_request_meeting: !!s.requestMeeting,
-    recent_access: log.slice(0, 10), my_requests: mine.map((r) => ({ id: r.id, with: r.with, topic: r.topic, status: r.status, created_at: r.createdAt })),
+    recent_access: log.slice(0, 10), my_requests: mine.map((r) => ({ id: r.id, with: r.with, topic: r.topic, status: r.status, created_at: r.createdAt, kind: r.kind ?? "meeting", resolution: r.resolution ?? null })), can_appeal: !!s.requestAppeal,
   });
 }
 export async function reviewConsent(deps: Deps, c: Caller, courseId: string, granted: boolean): Promise<Result> {
@@ -266,7 +266,7 @@ export async function listReviewRequests(deps: Deps, c: Caller, courseId: string
   if (!deps.store.listMeetingRequests) return ok({ requests: [] });
   const r = await deps.store.listMeetingRequests(c.userId, courseId);
   if (!r.ok) return err(403, errBody("forbidden", "Only the course staff can see meeting requests.", false));
-  return ok({ requests: r.requests.map((q) => ({ id: q.id, with: q.with, topic: q.topic, note: q.note ?? null, status: q.status, created_at: q.createdAt, student: q.student ?? "student" })) });
+  return ok({ requests: r.requests.map((q) => ({ id: q.id, with: q.with, topic: q.topic, note: q.note ?? null, status: q.status, created_at: q.createdAt, student: q.student ?? "student", kind: q.kind ?? "meeting", item_kind: q.itemKind ?? null, resolution: q.resolution ?? null })) });
 }
 export async function profLog(deps: Deps, c: Caller, courseId: string): Promise<Result> {
   if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
@@ -280,11 +280,40 @@ export async function profUndo(deps: Deps, c: Caller, courseId: string, actionId
   if (!r?.ok) return err(r?.reason === "not_staff" ? 403 : 409, errBody(r?.reason === "not_staff" ? "forbidden" : "bad_request", r?.reason === "not_staff" ? "Only the course staff can undo this." : "That action cannot be undone (already undone, or already applied).", false));
   return ok({ undone: true });
 }
-export async function completeReviewRequest(deps: Deps, c: Caller, courseId: string, requestId: string): Promise<Result> {
+export async function requestAppeal(deps: Deps, c: Caller, courseId: string, itemKind: string, itemTitle: string, note: string): Promise<Result> {
+  const a = await reviewAccess(deps, c, courseId);
+  if (!a.allowed) return err(403, errBody("not_enrolled", "You do not have access to this course's AI instructor.", false));
+  if (!deps.store.requestAppeal) return err(501, errBody("internal", "Appeals are not installed for this course.", false));
+  const n = cleanText(note, 500); if (!n || n.length < 10) return err(400, errBody("bad_request", "Please explain what you think is wrong, in at least a sentence.", false));
+  const r = await deps.store.requestAppeal(c.userId, courseId, itemKind, cleanText(itemTitle, 160) ?? "", n);
+  if (!r.ok) return r.reason === "limit" ? err(429, errBody("rate_limited", "You already have five open requests. Please wait for a reply to one of them.", false)) : r.reason === "note_too_short" ? err(400, errBody("bad_request", "Please explain what you think is wrong, in at least a sentence.", false)) : err(403, errBody("not_enrolled", "You do not have access to this course.", false));
+  deps.log("info", "appeal_requested", { course_id: courseId, user: await deps.userHash(c.userId), tool: itemKind });
+  return ok({ requested: true, id: r.id });
+}
+export async function profInbox(deps: Deps, c: Caller, courseId: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("inbox", { p_user: c.userId, p_course: courseId });
+  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see this.", false));
+  return ok({ requests: r.requests ?? [], questions: r.questions ?? [], held_grade_changes: r.held_grade_changes ?? 0 });
+}
+export async function profUsage(deps: Deps, c: Caller, courseId: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("usage", { p_user: c.userId, p_course: courseId });
+  if (!r || r.allowed === false) return err(403, errBody("forbidden", "Only the course staff can see this.", false));
+  const { allowed: _a, ...rest } = r as Record<string, unknown>;
+  return ok(rest);
+}
+export async function profClassMute(deps: Deps, c: Caller, courseId: string, student: string, mode: string): Promise<Result> {
+  if (!deps.store.profCall) return err(501, errBody("internal", "Professor mode is not installed for this course.", false));
+  const r = await deps.store.profCall("class_mute", { p_user: c.userId, p_course: courseId, p_student: student, p_mode: mode, p_session: null, p_trigger: "professor" });
+  if (!r || r.ok !== true) return err(r?.reason === "not_staff" ? 403 : 409, errBody("refused", r?.reason === "no_live_class" ? "There is no live class right now." : "That could not be done: " + String(r?.reason ?? "refused"), false));
+  return ok({ done: true, student: r.student, mode: r.mode });
+}
+export async function completeReviewRequest(deps: Deps, c: Caller, courseId: string, requestId: string, resolution?: string | null): Promise<Result> {
   const a = await reviewAccess(deps, c, courseId);
   if (!a.allowed || !a.isStaff) return err(403, errBody("forbidden", "Only the course staff can do this.", false));
   if (!deps.store.completeMeetingRequest) return err(501, errBody("internal", "Meeting requests are not installed (migration 005).", false));
-  return ok({ done: await deps.store.completeMeetingRequest(c.userId, courseId, requestId) });
+  return ok({ done: await deps.store.completeMeetingRequest(c.userId, courseId, requestId, resolution ? cleanText(resolution, 1000) : null) });
 }
 
 // ---- course materials upload (owner or admin) ---------------------------------------------------------------------------------

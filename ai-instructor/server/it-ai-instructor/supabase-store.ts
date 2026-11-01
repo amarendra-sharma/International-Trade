@@ -321,13 +321,20 @@ export class SupabaseStore implements Store {
     const d = await this.rpcJson(this.t("review_request_create"), { p_user: userId, p_course: courseId, p_with: withWhom, p_topic: topic, p_note: note });
     return d?.ok ? { ok: true, id: String(d.id) } : { ok: false, reason: String(d?.reason ?? "failed") };
   }
-  private mapReq(r: any): MeetingRequest { return { id: String(r.id), with: r.with === "professor" ? "professor" : "ta", topic: String(r.topic), note: r.note ?? null, status: r.status === "done" ? "done" : "open", createdAt: String(r.created_at), ...(r.student ? { student: String(r.student) } : {}) }; }
+  private mapReq(r: any): MeetingRequest { return { id: String(r.id), with: r.with === "professor" ? "professor" : "ta", topic: String(r.topic), note: r.note ?? null, status: r.status === "done" ? "done" : "open", createdAt: String(r.created_at), kind: r.kind ? String(r.kind) : "meeting", itemKind: r.item_kind ?? null, resolution: r.resolution ?? null, ...(r.student ? { student: String(r.student) } : {}) }; }
   async myMeetingRequests(userId: string, courseId: string) { const d = await this.rpcJson(this.t("review_requests_mine"), { p_user: userId, p_course: courseId }); return (Array.isArray(d) ? d : []).map((r: any) => this.mapReq(r)); }
   async listMeetingRequests(userId: string, courseId: string) {
     const d = await this.rpcJson(this.t("review_requests_list"), { p_user: userId, p_course: courseId });
     return d?.ok ? { ok: true, requests: (d.requests ?? []).map((r: any) => this.mapReq(r)) } : { ok: false, requests: [] };
   }
-  async completeMeetingRequest(userId: string, courseId: string, id: string) { const d = await this.rpcJson(this.t("review_request_done"), { p_user: userId, p_course: courseId, p_id: id }); return d?.ok === true; }
+  async completeMeetingRequest(userId: string, courseId: string, id: string, resolution?: string | null) {
+    const d = resolution ? await this.rpcJson(this.t("review_request_resolve"), { p_user: userId, p_course: courseId, p_id: id, p_resolution: resolution }) : await this.rpcJson(this.t("review_request_done"), { p_user: userId, p_course: courseId, p_id: id });
+    return d?.ok === true;
+  }
+  async requestAppeal(userId: string, courseId: string, itemKind: string, itemTitle: string, note: string) {
+    const d = await this.rpcJson(this.t("appeal_create"), { p_user: userId, p_course: courseId, p_item_kind: itemKind, p_item_title: itemTitle, p_note: note });
+    return d?.ok ? { ok: true, id: String(d.id) } : { ok: false, reason: String(d?.reason ?? "failed") };
+  }
 
 }
 

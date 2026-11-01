@@ -18,8 +18,16 @@ Syllabus, planned lectures (voice, attendance, recap announcements), exams from 
 - Exam and assignment text from students is treated as data, never as instructions to the AI.
 - Camera proctoring is the platform's existing proctoring; consent is shown before an exam starts.
 
-## Not built yet (needs a decision or a contract)
-- Single sign-on (SAML/OIDC) and LMS grade passback (LTI): planned as a per-university connector.
-- Per-university branding, custom domain and a separate database per tenant: one tenant per university is the chosen model; provisioning is manual today.
-- A written data-processing agreement, retention schedule and accessibility statement for each customer.
-- Makeup exams are open to any enrolled student (the rule keeps the better score); eligibility lists are not enforced.
+## Built for rollout (this build)
+- Review inbox: one place for meeting requests, grade appeals, student questions held for the professor, and held grade changes, with replies the student sees. Asha can summarise and close items on the professor's decision (she cannot decide an appeal).
+- Grade appeals from students (a button in the chat window), recorded and answered; an appeal never changes a grade by itself.
+- Mute or remove a student during a live class (professor or Asha), logged and reversible.
+- Makeup exams: open to everyone by default; the professor can require approval and approve students one by one.
+- Usage and cost report with CSV for each course; platform billing view for MacroNations.
+- Default monthly AI cap raised to 200 USD per course for autonomous courses.
+- Rollout kit in `docs/`: tenant setup, SSO and LMS notes, privacy notes, data processing addendum template, accessibility statement draft.
+
+## Not built (needs a university or a contract)
+- SSO connection and LTI 1.3 launch and grade passback: documented in `docs/SSO_AND_LMS_INTEGRATION.md`; needs the university's identity provider and a sandbox LMS to build and test.
+- Per-university branding and automated provisioning: manual checklist in `docs/TENANT_PROVISIONING.md`.
+- Signed data-processing agreement, security questionnaire answers, and the accessibility audit: drafts only.

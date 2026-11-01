@@ -71,7 +71,7 @@ export type ReviewList = { allowed: true; items: ReviewListItem[] } | { allowed:
 /** A graded paper (bubble-sheet) exam: the scanned pages live in the private paper-scans bucket and are fetched by the STUDENT'S browser with their own session. */
 export interface ReviewScan { sheetId: string; paths: string[]; score: number | null; maxScore: number | null; mode: "score" | "answers" | "questions" }
 export type ReviewDetail = { allowed: true; kind: string; title: string; closesAt: string | null; solutionsIncluded: boolean; items: Record<string, unknown>[]; scan?: ReviewScan } | { allowed: false; reason: ReviewReason; closesAt?: string | null };
-export interface MeetingRequest { id: string; with: "ta" | "professor"; topic: string; note?: string | null; status: "open" | "done"; createdAt: string; student?: string }
+export interface MeetingRequest { id: string; with: "ta" | "professor"; topic: string; note?: string | null; status: "open" | "done"; createdAt: string; student?: string; kind?: string; itemKind?: string | null; resolution?: string | null }
 export interface ReviewRepo {
   profCall?(name: ProfCall, args: Record<string, unknown>): Promise<any>;
   reviewConsentGet(userId: string, courseId: string): Promise<ReviewConsent>;
@@ -85,7 +85,8 @@ export interface ReviewRepo {
   requestMeeting(userId: string, courseId: string, withWhom: "ta" | "professor", topic: string, note: string | null): Promise<{ ok: boolean; id?: string; reason?: string }>;
   myMeetingRequests(userId: string, courseId: string): Promise<MeetingRequest[]>;
   listMeetingRequests(userId: string, courseId: string): Promise<{ ok: boolean; requests: MeetingRequest[] }>;
-  completeMeetingRequest(userId: string, courseId: string, id: string): Promise<boolean>;
+  completeMeetingRequest(userId: string, courseId: string, id: string, resolution?: string | null): Promise<boolean>;
+  requestAppeal?(userId: string, courseId: string, itemKind: string, itemTitle: string, note: string): Promise<{ ok: boolean; id?: string; reason?: string }>;
 }
 
 export interface Store extends Partial<ReviewRepo> {
@@ -158,7 +159,7 @@ export interface WalkRecord { ref: string; title: string; items: import("./visua
 /** The fixed set of professor-mode database functions (ma_ai_prof_*). Nothing else can be reached through profCall. */
 export type ProfCall = "overview" | "set_exam_window" | "announce" | "finalize" | "exam_results" | "undo" | "recent"
   | "assignment_save" | "deadline" | "submissions" | "propose_feedback" | "finalize_assignment" | "grade_override" | "apply_due"
-  | "student_ask" | "student_questions" | "questions" | "answer_question" | "class_start" | "class_step" | "class_current" | "standing_set" | "standing_list" | "roster" | "autopilot_courses" | "autopilot_work" | "schedule_get" | "schedule_set" | "schedule_clear" | "class_ping" | "attendance" | "class_turn_gate" | "syllabus_save" | "syllabus_get" | "lectures_plan" | "lectures_get" | "exam_create" | "final_preview" | "final_grades_run" | "term_schedule" | "audit_export" | "bank_samples";
+  | "student_ask" | "student_questions" | "questions" | "answer_question" | "class_start" | "class_step" | "class_current" | "standing_set" | "standing_list" | "roster" | "autopilot_courses" | "autopilot_work" | "schedule_get" | "schedule_set" | "schedule_clear" | "class_ping" | "attendance" | "class_turn_gate" | "syllabus_save" | "syllabus_get" | "lectures_plan" | "lectures_get" | "exam_create" | "final_preview" | "final_grades_run" | "term_schedule" | "audit_export" | "bank_samples" | "inbox" | "resolve_request" | "class_mute" | "makeup" | "usage";
 export const PROF_CALLS: readonly ProfCall[] = ["overview", "set_exam_window", "announce", "finalize", "exam_results", "undo", "recent",
   "assignment_save", "deadline", "submissions", "propose_feedback", "finalize_assignment", "grade_override", "apply_due",
-  "student_ask", "student_questions", "questions", "answer_question", "class_start", "class_step", "class_current", "standing_set", "standing_list", "roster", "autopilot_courses", "autopilot_work", "schedule_get", "schedule_set", "schedule_clear", "class_ping", "attendance", "class_turn_gate", "syllabus_save", "syllabus_get", "lectures_plan", "lectures_get", "exam_create", "final_preview", "final_grades_run", "term_schedule", "audit_export", "bank_samples"];
+  "student_ask", "student_questions", "questions", "answer_question", "class_start", "class_step", "class_current", "standing_set", "standing_list", "roster", "autopilot_courses", "autopilot_work", "schedule_get", "schedule_set", "schedule_clear", "class_ping", "attendance", "class_turn_gate", "syllabus_save", "syllabus_get", "lectures_plan", "lectures_get", "exam_create", "final_preview", "final_grades_run", "term_schedule", "audit_export", "bank_samples", "inbox", "resolve_request", "class_mute", "makeup", "usage"];

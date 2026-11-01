@@ -68,7 +68,11 @@ export function makeHandler(deps: Deps, opts: HttpOptions) {
         case "review_consent": r = await A.reviewConsent(deps, caller, body.course_id, body.granted); break;
         case "request_meeting": r = await A.requestMeeting(deps, caller, body.course_id, body.with, body.topic, body.note ?? null); break;
         case "list_review_requests": r = await A.listReviewRequests(deps, caller, body.course_id); break;
-        case "complete_review_request": r = await A.completeReviewRequest(deps, caller, body.course_id, body.request_id); break;
+        case "complete_review_request": r = await A.completeReviewRequest(deps, caller, body.course_id, body.request_id, body.resolution ?? null); break;
+        case "request_appeal": r = await A.requestAppeal(deps, caller, body.course_id, body.item_kind, body.item_title ?? "", body.note); break;
+        case "prof_inbox_get": r = await A.profInbox(deps, caller, body.course_id); break;
+        case "prof_usage_get": r = await A.profUsage(deps, caller, body.course_id); break;
+        case "prof_class_mute": r = await A.profClassMute(deps, caller, body.course_id, body.student, body.mode); break;
         case "ingest_materials": r = await A.ingestMaterials(deps, caller, body.course_id, body as never); break;
         case "prof_schedule_get": r = await A.profSchedule(deps, caller, body.course_id, "get"); break;
         case "prof_schedule_set": r = await A.profSchedule(deps, caller, body.course_id, "set", body); break;
