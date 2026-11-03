@@ -7259,7 +7259,7 @@ var ARENA_SCORING_NOTE = {
   'ricardian': 'Each round is scored by how close your specialization-and-trade choice came to the maximum gains from trade available (100% = the best possible), and your play score is the average across rounds. Do well by specializing in your comparative-advantage good (the one with the lowest opportunity cost) and trading at terms between the two countries’ autarky prices.',
   'specific-factors': 'Your score is your factor’s income, not your win count. Each round a trade-policy vote is decided and the winning policy raises or lowers the income of the factor you represent; your score is where your final income lands between the worst outcome possible (0%) and the best (100%). You can win every vote yet still score low if you backed policies that hurt your factor — so back, and win, the policy that helps you.',
   'heckscher-ohlin': 'Each round is scored by the value your production and trade choice created versus the best possible choice given the country’s factor endowments (100% = optimal), averaged across rounds. Do well by exporting the good that uses your abundant factor intensively.',
-  'terms-of-trade': 'Your score places the national welfare you achieved between passive play (0%) and expert play (100%) on the very same world. Do well by adjusting policy as world prices move — investing in import-competing sectors in glut years and pressing your advantage when your terms of trade are strong.',
+  'terms-of-trade': 'Your score places the national welfare you achieved between the worst play your decisions could have produced (0%) and the best achievable on the very same world (100%). Do well by adjusting policy as world prices move — investing in import-competing sectors in glut years and pressing your advantage when your terms of trade are strong.',
   'scale-economies': 'Your score is your total outcome as a fraction of the expert benchmark (100% = matching best play). Do well by concentrating production to exploit economies of scale and the larger integrated market.',
   'firm-export': 'Your score places your firm’s total profit between the worst (0%) and best (100%) possible paths. Do well by exporting only when a firm is productive enough to cover the fixed cost of entering a foreign market — and staying home when it is not.',
   'tariff-lab': 'Each decision is scored against the welfare-maximizing tariff (100% = optimal), averaged across rounds. Do well by setting tariffs near the level that balances terms-of-trade gains against deadweight loss, and recognizing when free trade is best.',
@@ -7318,8 +7318,10 @@ function fmtArenaVal(v){
 }
 function arenaDetailBody(details){
   if(!details){ return '<div style="font-size:12px;color:var(--text-subtle);">No round-by-round breakdown was recorded for this play.</div>'; }
-  var scalars=Object.keys(details).filter(function(k){ return k!=='version' && (details[k]===null || typeof details[k]!=='object'); });
-  var sline=scalars.length?('<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:5px;">'+scalars.map(function(k){ return '<b>'+esc(arenaColLabel(k))+':</b> '+arenaCellFmt(k,details[k]); }).join(' \u00b7 ')+'</div>'):'';
+  var HIDEKEYS={ version:1, score_note:1, score_adjusted:1, score_prev_inverted:1 };
+  var noteHTML = details.score_note ? '<div style="font-size:11.5px;color:var(--text-bright);background:rgba(124,109,242,.12);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;"><b>Score update.</b> '+esc(details.score_note)+'</div>' : '';
+  var scalars=Object.keys(details).filter(function(k){ return !HIDEKEYS[k] && (details[k]===null || typeof details[k]!=='object'); });
+  var sline=noteHTML+(scalars.length?('<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:5px;">'+scalars.map(function(k){ return '<b>'+esc(arenaColLabel(k))+':</b> '+arenaCellFmt(k,details[k]); }).join(' \u00b7 ')+'</div>'):'');
   if(Array.isArray(details.rounds) && details.rounds.length){
     var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Round</th><th scope="col">Score</th><th scope="col">What happened</th></tr></thead><tbody>';
     details.rounds.forEach(function(r,i){
@@ -8293,7 +8295,7 @@ sb.auth.getSession().then(function(res){
 try { console.log('%cInternational Trade build: ' + IT_BUILD + ' | tree renderer present: ' + (typeof renderTreeFigure !== 'undefined') + ' | matrix renderer present: ' + (typeof renderMatrixFigure !== 'undefined'), 'color:#7c6df2;font-weight:bold'); } catch(e){}
 </script>
 <script src="macronations-enhance.js" defer></script>
-<script type="module" src="ai-instructor/widget.js?v=20261101a"></script>
-<script type="module" src="ai-instructor/teach-panel.js?v=20261101a"></script>
+<script type="module" src="ai-instructor/widget.js?v=20261024a"></script>
+<script type="module" src="ai-instructor/teach-panel.js?v=20261021c"></script>
 </body>
 </html>

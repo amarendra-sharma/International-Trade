@@ -149,19 +149,24 @@ function saveResult(score,outcome,details){
   });
 }
 
-/* ---------------- model ----------------
-   State: tot (terms of trade), cap (ore capacity), tariffOn, retaliated.
-   Welfare per year = cap * tot^0.6  (export earnings deflated by import prices)
-                      + tariff TOT gain − tariff distortion − retaliation cost.
+/* ---------------- model (rebalanced p3) ----------------
+   State: tot (terms of trade), cap (ore capacity), retaliated.
+   Welfare per year = cap * (tot*tariffBoost)^0.6 / 10  (export earnings deflated
+                      by import prices) + a small dividend / minus tariff cost.
    Policies:
-     expand   : cap +18, but world ore supply up → tot −8% (−14% in glut years)
-     import   : tot +5% (import demand falls → import prices fall), cap +0
-     tariff10 : one-year TOT +4%, distortion −2 welfare
-     tariff25 : one-year TOT +9%, distortion −6 welfare, 50% retaliation risk
-                (retaliation: tot −12% for the REST of the game)
-     consume  : +10 welfare now, nothing else
-   Random events per year (seeded so the expert benchmark faces the SAME world):
-     glut (extra supply abroad, expand hurts more), boom (tot +6%), calm.     */
+     expand    : cap +18, but your extra supply lowers world ore prices
+                 tot −3% in calm, −27% in a GLUT (expanding into a glut is
+                 immiserizing growth — income actually falls).
+     import_sub: build import-competing industry — tot +3% (and +15% in a GLUT,
+                 when depressed export prices make the investment pay most).
+     tariff10  : one-year TOT +6%, distortion −1 welfare (optimal-tariff logic).
+     tariff25  : one-year TOT +11%, −4 welfare, 50% retaliation risk
+                 (retaliation: tot −15% for the REST of the game).
+     consume   : +2 welfare now, no investment.
+   Events are fixed (calm, glut, boom, calm, glut, calm). The score places the
+   player between the WORST and BEST achievable welfare on this same world, so
+   the intended strategy — import-competing in gluts, press advantage when
+   strong, lock in at the end — is the genuine optimum.                      */
 var EV = [
   { t:'Year 1 — Calm markets', kind:'calm', d:'World markets are steady. A good year to set your strategy.' },
   { t:'Year 2 — Rival discovers ore', kind:'glut', d:'A rival country brings a huge ore field online. Extra world supply punishes further expansion this year.' },
@@ -171,11 +176,11 @@ var EV = [
   { t:'Year 6 — Final year', kind:'calm', d:'Last budget. Lock in welfare.' }
 ];
 var POL = {
-  expand:{ label:'Expand the ore sector', small:'+18 capacity, but your extra supply lowers world ore prices (TOT −8%, −14% in glut years)' },
-  import_sub:{ label:'Build import-competing industry', small:'Buy less from the world: import prices ease, TOT +5%' },
-  tariff10:{ label:'Moderate tariff (10%)', small:'Optimal-tariff logic: TOT +4% this year, small distortion (−2 welfare)' },
-  tariff25:{ label:'Aggressive tariff (25%)', small:'TOT +9% this year, −6 welfare distortion, 50% chance of retaliation (TOT −12% permanently)' },
-  consume:{ label:'Dividend year', small:'+10 welfare now; no investment' }
+  expand:{ label:'Expand the ore sector', small:'+18 capacity, but your extra supply lowers world ore prices (TOT −3% in calm, −27% in a glut — expanding into a glut backfires)' },
+  import_sub:{ label:'Build import-competing industry', small:'Buy less from the world: import prices ease, TOT +3% (and +15% in a glut, when it helps most)' },
+  tariff10:{ label:'Moderate tariff (10%)', small:'Optimal-tariff logic: TOT +6% this year, small distortion (−1 welfare)' },
+  tariff25:{ label:'Aggressive tariff (25%)', small:'TOT +11% this year, −4 welfare distortion, 50% chance of retaliation (TOT −15% permanently)' },
+  consume:{ label:'Dividend year', small:'+2 welfare now; no investment in future terms of trade' }
 };
 function mulberry(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 var SEED = Math.floor(Math.random()*1e9);
@@ -188,15 +193,15 @@ function simulate(policyFn, record){
     if(ev.kind==='boom'){ st.tot*=1.06; }
     var pol = policyFn(y, ev, st);
     var totBoost=1, extraW=0, note='';
-    if(pol==='expand'){ st.cap+=18; st.tot*= (ev.kind==='glut'?0.86:0.92); note='Capacity up; world ore price down.'; }
-    else if(pol==='import_sub'){ st.tot*=1.05; note='Import demand down; TOT improved.'; }
-    else if(pol==='tariff10'){ totBoost=1.04; extraW=-2; note='Small optimal-tariff gain.'; }
+    if(pol==='expand'){ st.cap+=18; st.tot*= (ev.kind==='glut'?0.73:0.97); note='Capacity up; world ore price down.'; }
+    else if(pol==='import_sub'){ st.tot*=(ev.kind==='glut'?1.15:1.03); note='Import demand down; TOT improved.'; }
+    else if(pol==='tariff10'){ totBoost=1.06; extraW=-1; note='Small optimal-tariff gain.'; }
     else if(pol==='tariff25'){
-      totBoost=1.09; extraW=-6;
-      if(!st.retaliated && rnd()<0.5){ st.retaliated=true; st.tot*=0.88; note='RETALIATION: partners raised tariffs on your ore. TOT permanently damaged.'; }
+      totBoost=1.11; extraW=-4;
+      if(!st.retaliated && rnd()<0.5){ st.retaliated=true; st.tot*=0.85; note='RETALIATION: partners raised tariffs on your ore. TOT permanently damaged.'; }
       else { note='Big TOT grab — you got away with it this year.'; }
     }
-    else { extraW=10; note='Dividend paid.'; }
+    else { extraW=2; note='Dividend paid.'; }
     var wYear = st.cap*Math.pow(st.tot*totBoost,0.6)/10 + extraW;
     st.W += wYear;
     st.hist.push({ y:y+1, pol:pol, tot:st.tot, w:wYear, note:note });
@@ -217,7 +222,6 @@ var EXPERT = null;
 /* ---------------- interactive play ---------------- */
 var G={ y:0, st:{tot:1.0,cap:100,W:0,retaliated:false,hist:[]}, rnd:mulberry(SEED), sel:null, totPath:[1.0] };
 $('startBtn').addEventListener('click',function(){
-  EXPERT = simulate(expertPolicy);
   $('intro').classList.add('hidden'); $('play').classList.remove('hidden');
   year();
 });
@@ -245,15 +249,15 @@ function year(){
 $('goBtn').addEventListener('click',function(){
   var ev=EV[G.y], st=G.st, pol=G.sel;
   var totBoost=1, extraW=0, note='';
-  if(pol==='expand'){ st.cap+=18; st.tot*=(ev.kind==='glut'?0.86:0.92); note='Your extra supply pushed world ore prices down '+(ev.kind==='glut'?'hard (glut year).':'somewhat.'); }
-  else if(pol==='import_sub'){ st.tot*=1.05; note='Importing less eased import prices — TOT up 5%.'; }
-  else if(pol==='tariff10'){ totBoost=1.04; extraW=-2; note='Moderate tariff: TOT +4% this year at a small domestic cost. This is the optimal-tariff idea for a large country.'; }
+  if(pol==='expand'){ st.cap+=18; st.tot*=(ev.kind==='glut'?0.73:0.97); note='Your extra supply pushed world ore prices down '+(ev.kind==='glut'?'hard — expanding into a glut is immiserizing growth (§5.4).':'a little.'); }
+  else if(pol==='import_sub'){ st.tot*=(ev.kind==='glut'?1.15:1.03); note='Importing less eased import prices — TOT up '+(ev.kind==='glut'?'15% (worth most in a glut year).':'3%.'); }
+  else if(pol==='tariff10'){ totBoost=1.06; extraW=-1; note='Moderate tariff: TOT +6% this year at a small domestic cost. This is the optimal-tariff idea for a large country.'; }
   else if(pol==='tariff25'){
-    totBoost=1.09; extraW=-6;
-    if(!st.retaliated && G.rnd()<0.5){ st.retaliated=true; st.tot*=0.88; note='<span class="bad">RETALIATION!</span> Partners slapped tariffs on your ore — TOT permanently down 12%. Large-country tariffs invite this.'; }
+    totBoost=1.11; extraW=-4;
+    if(!st.retaliated && G.rnd()<0.5){ st.retaliated=true; st.tot*=0.85; note='<span class="bad">RETALIATION!</span> Partners slapped tariffs on your ore — TOT permanently down 15%. Large-country tariffs invite this.'; }
     else{ note='Aggressive tariff paid off this year — no retaliation (yet). You were lucky.'; }
   }
-  else { extraW=10; note='You paid a dividend. Sometimes consuming the gains IS the right call.'; }
+  else { extraW=2; note='You paid a dividend — a little income now, but nothing invested in your future terms of trade.'; }
   var wYear = st.cap*Math.pow(st.tot*totBoost,0.6)/10 + extraW;
   st.W+=wYear;
   st.hist.push({ y:G.y+1, pol:pol, tot:st.tot, w:wYear });
@@ -288,21 +292,38 @@ function drawTot(){
   });
   ctx.stroke();
 }
+var POLSET=['expand','import_sub','tariff10','consume'];
+function bestWorstWelfare(){
+  // Brute force the 4^6 deterministic policy paths; tariff25 is excluded because
+  // its retaliation is random. Returns the best and worst total welfare.
+  var best=-1e9, worst=1e9, bestSeq=null, i, k, n, seq;
+  for(i=0;i<4096;i++){
+    seq=[]; n=i;
+    for(k=0;k<6;k++){ seq.push(POLSET[n&3]); n>>=2; }
+    (function(sq){
+      var r=simulate(function(y){ return sq[y]; });
+      if(r.W>best){ best=r.W; bestSeq=sq.slice(); }
+      if(r.W<worst){ worst=r.W; }
+    })(seq);
+  }
+  return { best:best, worst:worst, bestSeq:bestSeq };
+}
 function finish(){
   $('play').classList.add('hidden'); $('done').classList.remove('hidden');
-  // Baseline = all-dividend passive play on same seed; expert = benchmark.
-  var passive = simulate(function(){ return 'consume'; });
-  var score = (G.st.W - passive.W) / (EXPERT.W - passive.W);
+  // Score places your welfare between the WORST and BEST achievable play on this
+  // same world (brute-forced over the deterministic policies): 0% = worst, 100% = best.
+  var bw = bestWorstWelfare();
+  var score = (bw.best>bw.worst) ? (G.st.W - bw.worst) / (bw.best - bw.worst) : 1;
   score = Math.max(0, Math.min(1, score));
   $('finalPct').textContent=Math.round(score*100)+'%';
-  $('finalMsg').textContent='Your welfare: '+G.st.W.toFixed(0)+' · passive baseline: '+passive.W.toFixed(0)+' · expert play on the same world: '+EXPERT.W.toFixed(0)+'.'+
-    (score>0.85?' Masterful macro-trade management.':score>0.55?' Solid — compare your years 2 and 5 with the expert line: glut years reward import-competing investment.':' The world price kept getting away from you. Re-read §5.3–5.4 and try attempt two.');
+  $('finalMsg').textContent='Your welfare: '+G.st.W.toFixed(0)+' · worst play on this world: '+bw.worst.toFixed(0)+' · best achievable: '+bw.best.toFixed(0)+'.'+
+    (score>0.85?' Masterful — you invested in import-competing capacity during gluts and pressed your advantage when prices were strong.':score>0.55?' Solid — but compare your glut years (2 and 5) with the best line: gluts reward import-competing investment, not expansion.':' The world price kept getting away from you. Expanding into a glut is immiserizing; build import-competing industry instead. Re-read §5.3–5.4 and try attempt two.');
   var rec='<table><thead><tr><th>Year</th><th>Your policy</th><th>TOT after</th><th>Welfare</th></tr></thead><tbody>';
   G.st.hist.forEach(function(h){ rec+='<tr><td>'+h.y+'</td><td>'+POL[h.pol].label+'</td><td>'+h.tot.toFixed(2)+'</td><td>'+h.w.toFixed(1)+'</td></tr>'; });
   rec+='</tbody></table>';
   $('recap').innerHTML=rec;
   var outcome=score>0.85?'mastered':score>0.55?'proficient':score>0.25?'developing':'beginning';
-  saveResult(score,outcome,{ seed:SEED, welfare:Math.round(G.st.W), expert:Math.round(EXPERT.W), retaliated:G.st.retaliated, history:G.st.hist, version:'p2-1' });
+  saveResult(score,outcome,{ seed:SEED, welfare:Math.round(G.st.W), best:Math.round(bw.best), worst:Math.round(bw.worst), retaliated:G.st.retaliated, history:G.st.hist, version:'p3-1' });
 }
 
 /* ---- subscription gate: only the free arena plays without an active subscription ---- */
@@ -383,5 +404,6 @@ boot();
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', boot); } else { boot(); }
 })();
 </script>
+<script src="macronations-enhance.js" defer></script>
 </body>
 </html>
