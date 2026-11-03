@@ -167,7 +167,7 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
       } catch (_e) { /* the guard is best-effort; never block a turn because it could not be checked */ }
     }
     // ---- reserve the turn atomically (dedupe, rate limits, budgets, concurrency) ------------------------------------------------
-    const begin = await store.beginTurn({ sessionId: session.id, userId: caller.userId, courseId: session.courseId, clientTurnId: req.client_turn_id, text: req.text, settings: access.settings, now: now(), maxGenerating: ctl.courseMaxGenerating ?? undefined });
+    const begin = await store.beginTurn({ sessionId: session.id, userId: caller.userId, courseId: session.courseId, clientTurnId: req.client_turn_id, text: req.text, settings: access.isStaff ? { ...access.settings, studentDailyTokens: Math.max(access.settings.studentDailyTokens, LIMITS.instructorDailyTokens) } : access.settings, now: now(), maxGenerating: ctl.courseMaxGenerating ?? undefined });
     switch (begin.kind) {
       case "duplicate": return fail(errBody("duplicate", "That message was already received.", false));
       case "in_progress": return fail(errBody("in_progress", "That message is still being answered.", true, 2));

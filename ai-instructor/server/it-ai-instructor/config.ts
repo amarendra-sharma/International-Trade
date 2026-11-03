@@ -77,6 +77,7 @@ export const LIMITS = {
   courseMaxConcurrentGenerating: 40,
   // default budgets (instructor can change per course)
   defaultStudentDailyTokens: 60_000,
+  instructorDailyTokens: 750_000,    // staff (professor mode) get at least this per day; the course monthly cap still applies
   defaultCourseMonthlyUsd: 25,
   // timeouts
   firstEventTimeoutMs: 20_000,
