@@ -16,7 +16,7 @@ import { wrapMaterial } from "./prompt.ts";
 import { assessCoverage, selectPassages } from "./content.ts";
 import type { ContentRepo, CourseSettings, ReviewKind, ReviewReason, Store } from "./store.ts";
 import * as E from "./econ.ts";
-import { consumerChoice, equationSpec, figureSpec, graphSpec, missedSpec, reviewPage, reviewRows, scanSpec, type VisualSpec } from "./visuals.ts";
+import { consumerChoice, equationSpec, figureSpec, graphSpec, matrixSpec, treeSpec, missedSpec, reviewPage, reviewRows, scanSpec, type VisualSpec } from "./visuals.ts";
 import { figureIndex } from "./figures.ts";
 import { hasFigures } from "./config.ts";
 import { masteryEstimate } from "./teaching.ts";
@@ -170,6 +170,31 @@ export const TOOLS: ToolDef[] = [
         const steps = ["the axes (" + r.spec.x_label + " and " + r.spec.y_label + ")", ...r.spec.series.map((x) => "the curve '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...r.spec.markers.map((m) => "the point '" + m.label + "'" + (m.note ? " (" + m.note + ")" : ""))];
         return { shown: true, optimum_before: r.before, ...(r.after ? { optimum_after: r.after } : {}), idea: r.note, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in that order, one short sentence each, using the exact numbers above, then say what it means." };
       } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+    },
+  },
+  {
+    name: "show_matrix",
+    description: "Draw a PAYOFF MATRIX (normal-form game) on the student's whiteboard. ALWAYS use this for any simultaneous-move game: prisoner's dilemma, coordination, chicken, matching pennies, battle of the sexes, stag hunt, Cournot or auction grids, and so on. Give the players, the strategy labels, and payoffs[row][col] = [row player's payoff, column player's payoff] as short strings (numbers like \"-1\" or symbols like \"T\"). With numeric payoffs the SERVER finds each player's best responses and every pure-strategy Nash equilibrium (and the mixed equilibrium of a 2x2 game) and the board circles and highlights them step by step, so your words must agree with the facts in the result. 2 to 5 strategies each.",
+    input: { type: "object", additionalProperties: false, required: ["row_labels", "col_labels", "payoffs"], properties: {
+      title: text(80), row_player: text(24), col_player: text(24), note: text(110),
+      row_labels: { type: "array", minItems: 2, maxItems: 5, items: text(20) }, col_labels: { type: "array", minItems: 2, maxItems: 5, items: text(20) },
+      payoffs: { type: "array", minItems: 2, maxItems: 5, items: { type: "array", minItems: 2, maxItems: 5, items: { type: "array", minItems: 2, maxItems: 2, items: text(12) } } },
+    } },
+    async run(i, c) {
+      try { const { spec, facts } = matrixSpec(i); c.emitVisual?.(spec);
+        return { shown: true, ...facts, whiteboard: "The board reveals ONE step each time you start a new sentence: 1) the grid, players and strategies; 2) the payoffs; 3) the row player's best responses (circles); 4) the column player's best responses; 5) the Nash equilibrium cell(s). Explain them in that order, one short sentence each, using the facts above, then say what it means." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+    },
+  },
+  {
+    name: "show_game_tree",
+    description: "Draw a GAME TREE (extensive-form game) on the student's whiteboard. ALWAYS use this for sequential games: entry deterrence, ultimatum, centipede, trust, bargaining rounds, signaling games with Nature, Stackelberg. Give players (2 to 4 names, in payoff order) and a flat list of nodes, PARENTS FIRST (the first node is the root). Each non-root node: id (short, unique), parent (id), move (the label on the branch leading to it), and prob (only for branches out of Nature). Each decision node: player (a name from players, or \"Nature\"). Each terminal node: payoffs (one per player, in the order of players, as short strings). Optional info on decision nodes: give two nodes of the same player the same info id to draw an information set (a dashed bar). With numeric payoffs and no information sets the SERVER runs backward induction and the board highlights the optimal move at every decision point. At most 31 nodes and 6 moves deep.",
+    input: { type: "object", additionalProperties: false, required: ["players", "nodes"], properties: {
+      title: text(80), players: { type: "array", minItems: 2, maxItems: 4, items: text(16) },
+      nodes: { type: "array", minItems: 3, maxItems: 31, items: { type: "object", additionalProperties: false, required: ["id"], properties: { id: text(12), parent: text(12), move: text(20), prob: { type: "number", minimum: 0, maximum: 1 }, player: text(16), info: text(12), payoffs: { type: "array", minItems: 2, maxItems: 4, items: text(12) } } } },
+    } },
+    async run(i, c) {
+      try { const { spec, facts } = treeSpec(i); c.emitVisual?.(spec);
+        return { shown: true, ...facts, whiteboard: "The board reveals ONE step each time you start a new sentence: the root and its moves, then each level down to the payoffs, then any information sets, then the backward-induction path. Explain them in that order, one short sentence each, using the facts above, then say what it means." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
   {
