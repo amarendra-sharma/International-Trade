@@ -44,6 +44,8 @@ function mapSession(r: Record<string, any>): SessionRow {
 export class SupabaseStore implements Store {
   /** @param prefix "it_ai_" (International Trade) or "im_ai_" (Microeconomics): the tables and functions this store talks to. The shared key table (it_ai_keys) is never prefixed. */
   constructor(protected db: Admin, protected prefix: string = "it_ai_") {}
+  /** Table holding stored AI keys. Shared it_ai_keys by default; a portal on its own database (Game Theory) points this at its own table. */
+  protected keysTable = "it_ai_keys";
   protected t(name: string): string { return this.prefix + name; }
 
   protected async one<T = any>(q: PromiseLike<{ data: T | null; error: any }>): Promise<T | null> {
@@ -92,20 +94,20 @@ export class SupabaseStore implements Store {
     if (admins.error) throw new Error("db: platform key lookup failed");
     const ids = (admins.data ?? []).map((r: { id: string }) => r.id);
     if (!ids.length) return null;
-    const r = await this.db.from("it_ai_keys").select("owner_id").in("owner_id", ids).order("updated_at", { ascending: true }).limit(1);
+    const r = await this.db.from(this.keysTable).select("owner_id").in("owner_id", ids).order("updated_at", { ascending: true }).limit(1);
     if (r.error) throw new Error("db: platform key lookup failed");
     return r.data?.[0]?.owner_id ?? null;
   }
 
   async getStoredKey(ownerId: string): Promise<StoredKey | null> {
-    const r = await this.one(this.db.from("it_ai_keys").select("ciphertext,iv,model,last4,updated_at,provider,base_url,price_in,price_out").eq("owner_id", ownerId).maybeSingle());
+    const r = await this.one(this.db.from(this.keysTable).select("ciphertext,iv,model,last4,updated_at,provider,base_url,price_in,price_out").eq("owner_id", ownerId).maybeSingle());
     return r ? { ciphertext: r.ciphertext, iv: r.iv, model: r.model, last4: r.last4, updatedAt: r.updated_at, provider: r.provider ?? "anthropic", baseUrl: r.base_url ?? null, priceIn: r.price_in === null || r.price_in === undefined ? null : Number(r.price_in), priceOut: r.price_out === null || r.price_out === undefined ? null : Number(r.price_out) } : null;
   }
   async putStoredKey(ownerId: string, k: Omit<StoredKey, "updatedAt">): Promise<void> {
-    const { error } = await this.db.from("it_ai_keys").upsert({ owner_id: ownerId, ciphertext: k.ciphertext, iv: k.iv, model: k.model, last4: k.last4, provider: k.provider, base_url: k.baseUrl, price_in: k.priceIn, price_out: k.priceOut, updated_at: new Date().toISOString() }, { onConflict: "owner_id" });
+    const { error } = await this.db.from(this.keysTable).upsert({ owner_id: ownerId, ciphertext: k.ciphertext, iv: k.iv, model: k.model, last4: k.last4, provider: k.provider, base_url: k.baseUrl, price_in: k.priceIn, price_out: k.priceOut, updated_at: new Date().toISOString() }, { onConflict: "owner_id" });
     if (error) throw new Error("db: key save failed");
   }
-  async deleteStoredKey(ownerId: string): Promise<void> { const { error } = await this.db.from("it_ai_keys").delete().eq("owner_id", ownerId); if (error) throw new Error("db: key delete failed"); }
+  async deleteStoredKey(ownerId: string): Promise<void> { const { error } = await this.db.from(this.keysTable).delete().eq("owner_id", ownerId); if (error) throw new Error("db: key delete failed"); }
 
   async setSettings(courseId: string, p: Partial<CourseSettings>): Promise<CourseSettings> {
     const cur = (await this.getCourseSettings(courseId));
