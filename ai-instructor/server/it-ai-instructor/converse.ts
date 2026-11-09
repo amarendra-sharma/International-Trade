@@ -233,9 +233,10 @@ export async function handleTurn(deps: Deps, caller: Caller, req: TurnRequest, c
         }
       }
     }
-    const cue: DrawCue = !hasFigures(session.courseId) && !dir.flags.length && dir.mode !== "review" ? drawCue(req.text) : null;
     const hist = await store.listMessages(session.id);
     const prevUser = [...hist].reverse().find((m) => m.role === "user" && m.turnId !== turnId)?.content;
+    // a short follow-up ("Yes.", "go through an example") in a drawing conversation is still a drawing turn
+    const cue: DrawCue = !hasFigures(session.courseId) && !dir.flags.length && dir.mode !== "review" ? (drawCue(req.text) ?? (prevUser && drawCue(prevUser) ? "follow" : null)) : null;
     const [apiKey, retrieval] = await Promise.all([keyP, retrieveForTurn(deps.content, { userId: caller.userId, courseId: session.courseId, chapter: req.context?.chapter ?? null }, req.text, { mode: dir.mode, topic: req.context?.topic, previousUser: prevUser })]);
     log("info", "retrieval", { turn_id: turnId, reason: `${retrieval.coverage}/${retrieval.strategy}`, count: retrieval.passages.length, latency_ms: retrieval.ms, ...(dir.flags.length ? { code: "restricted_request" } : {}) });
     const textbook = await bookP;
