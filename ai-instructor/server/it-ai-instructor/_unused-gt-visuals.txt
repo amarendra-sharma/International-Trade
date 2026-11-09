@@ -1,0 +1,80 @@
+
+// ---- game theory diagrams: payoff matrix and game tree ---------------------------------------------------------------------------------
+// The model gives labels and payoffs (as short strings, so a payoff may be a number such as "-1" or a symbol such as "T"); the server checks them,
+// works out the best responses, Nash equilibria and the backward-induction path exactly, and the client draws the result.
+export interface MatrixSpec { kind: "matrix"; title?: string; row_player: string; col_player: string; row_labels: string[]; col_labels: string[]; cells: (number | string)[][][];
+  br_row?: boolean[][]; br_col?: boolean[][]; nash?: [number, number][]; note?: string }
+export interface TreeNode { id: string; parent?: string; edge?: string; prob?: number; player?: string; info?: string; payoff?: (number | string)[]; spne?: boolean }
+export interface TreeSpec { kind: "tree"; title?: string; players: string[]; nodes: TreeNode[] }
+export interface MatrixInput { title?: string; row_player?: string; col_player?: string; row_labels: string[]; col_labels: string[]; payoffs: string[][][]; note?: string }
+export interface TreeInput { title?: string; players: string[]; nodes: { id: string; parent?: string; move?: string; prob?: number; player?: string; info?: string; payoffs?: string[] }[] }
+const val = (s: string): number | string => { const t = String(s).trim(); if (t !== "" && Number.isFinite(Number(t)) && Math.abs(Number(t)) <= LIM) return Number(t); return clean(t, 12) || "?"; };
+
+export function matrixSpec(i: MatrixInput): { spec: MatrixSpec; facts: Record<string, unknown> } {
+  const n = i.payoffs.length, m = i.payoffs[0]?.length ?? 0;
+  if (n < 2 || n > 5 || m < 2 || m > 5) throw new CalcError("a payoff matrix needs 2 to 5 strategies for each player");
+  if (i.row_labels.length !== n || i.col_labels.length !== m) throw new CalcError(`row_labels must have ${n} entries and col_labels ${m}, matching the payoffs grid (rows first)`);
+  const cells = i.payoffs.map((r, a) => { if (r.length !== m) throw new CalcError("every row of payoffs must have the same number of cells"); return r.map((c, b) => { if (c.length !== 2) throw new CalcError(`cell (${a + 1},${b + 1}) must be [row player payoff, column player payoff]`); return [val(c[0]), val(c[1])]; }); });
+  const spec: MatrixSpec = { kind: "matrix", row_player: clean(i.row_player ?? "Row", 24), col_player: clean(i.col_player ?? "Column", 24), row_labels: i.row_labels.map((s) => clean(s, 20)), col_labels: i.col_labels.map((s) => clean(s, 20)), cells };
+  if (i.title) spec.title = clean(i.title, 80); if (i.note) spec.note = clean(i.note, 110);
+  const numeric = cells.every((r) => r.every((c) => typeof c[0] === "number" && typeof c[1] === "number"));
+  const facts: Record<string, unknown> = { numeric };
+  if (numeric) {
+    const A = (a: number, b: number) => cells[a][b][0] as number, B = (a: number, b: number) => cells[a][b][1] as number;
+    spec.br_row = cells.map((r, a) => r.map((_, b) => A(a, b) >= Math.max(...cells.map((_, k) => A(k, b)))));
+    spec.br_col = cells.map((r, a) => r.map((_, b) => B(a, b) >= Math.max(...r.map((_, k) => B(a, k)))));
+    spec.nash = [];
+    for (let a = 0; a < n; a++) for (let b = 0; b < m; b++) if (spec.br_row[a][b] && spec.br_col[a][b]) spec.nash.push([a, b]);
+    Object.assign(facts, E.nash(cells as unknown as number[][][]));
+    facts.pure_nash_cells = spec.nash.map(([a, b]) => `${spec.row_labels[a]} / ${spec.col_labels[b]}`);
+  }
+  return { spec, facts };
+}
+
+export function treeSpec(i: TreeInput): { spec: TreeSpec; facts: Record<string, unknown> } {
+  const players = i.players.map((p) => clean(p, 16)); if (players.length < 2 || players.length > 4 || new Set(players).size !== players.length) throw new CalcError("players: 2 to 4 different names");
+  if (i.nodes.length < 3 || i.nodes.length > 31) throw new CalcError("a game tree needs 3 to 31 nodes");
+  const ids = new Set<string>(), kids = new Map<string, string[]>(), nodes: TreeNode[] = [], depth = new Map<string, number>();
+  i.nodes.forEach((nd, k) => {
+    const id = clean(nd.id, 12).replace(/\s/g, ""); if (!id || ids.has(id)) throw new CalcError(`node ${k + 1}: id must be unique and non-empty`);
+    const out: TreeNode = { id };
+    if (k === 0) { if (nd.parent) throw new CalcError("the first node is the root and has no parent"); depth.set(id, 0); }
+    else { const p = clean(nd.parent ?? "", 12).replace(/\s/g, ""); if (!ids.has(p)) throw new CalcError(`node "${id}": parent "${p}" must be listed BEFORE it`); out.parent = p; out.edge = clean(nd.move ?? "", 20); if (!out.edge) throw new CalcError(`node "${id}": give the move (edge label) that leads to it`);
+      if (nd.prob !== undefined) { if (!(nd.prob >= 0 && nd.prob <= 1)) throw new CalcError(`node "${id}": prob must be between 0 and 1`); out.prob = nd.prob; }
+      kids.get(p)!.push(id); const d = (depth.get(p) ?? 0) + 1; if (d > 6) throw new CalcError("the tree is too deep (at most 6 moves)"); depth.set(id, d); }
+    if (nd.player) out.player = clean(nd.player, 16); if (nd.info) out.info = clean(nd.info, 12);
+    if (nd.payoffs) out.payoff = nd.payoffs.map(val);
+    ids.add(id); kids.set(id, []); nodes.push(out);
+  });
+  // checks: decision nodes have a mover and 2+ moves; terminal nodes have one payoff per player
+  for (const nd of nodes) {
+    const ks = kids.get(nd.id)!;
+    if (ks.length) {
+      if (ks.length < 2) throw new CalcError(`node "${nd.id}" has only one move; a decision point needs at least two`);
+      if (!nd.player) throw new CalcError(`node "${nd.id}" has moves but no player; give player (one of the players, or "Nature")`);
+      if (nd.player !== "Nature" && !players.includes(nd.player)) throw new CalcError(`node "${nd.id}": player "${nd.player}" is not in players (use "Nature" for chance moves)`);
+      if (nd.player === "Nature") { const s = ks.reduce((a, k) => a + (nodes.find((x) => x.id === k)!.prob ?? NaN), 0); if (!(Math.abs(s - 1) < 1e-6)) throw new CalcError(`node "${nd.id}": Nature's move probabilities (prob on each child) must add to 1`); }
+      if (nd.payoff) throw new CalcError(`node "${nd.id}" has moves, so it cannot have payoffs`);
+    } else if (!nd.payoff || nd.payoff.length !== players.length) throw new CalcError(`terminal node "${nd.id}" needs payoffs: one per player, in the order of players`);
+  }
+  const facts: Record<string, unknown> = {}, byId = new Map(nodes.map((n) => [n.id, n]));
+  const perfect = !nodes.some((n) => n.info) && nodes.every((n) => (kids.get(n.id)!.length ? true : (n.payoff ?? []).every((v) => typeof v === "number")));
+  if (perfect) {
+    const value = (id: string): number[] => {
+      const nd = byId.get(id)!, ks = kids.get(id)!;
+      if (!ks.length) return nd.payoff as number[];
+      const vs = ks.map(value);
+      if (nd.player === "Nature") return players.map((_, p) => ks.reduce((a, k, q) => a + (byId.get(k)!.prob as number) * vs[q][p], 0));
+      const pi = players.indexOf(nd.player as string); let best = 0; vs.forEach((v, q) => { if (v[pi] > vs[best][pi] + 1e-12) best = q; });
+      ks.forEach((k, q) => { if (q === best) byId.get(k)!.spne = true; });
+      return vs[best];
+    };
+    const root = value(nodes[0].id).map((v) => Math.round(v * 1e4) / 1e4);
+    const path: string[] = []; let cur = nodes[0].id;
+    for (let g = 0; g < 8; g++) { const ks = kids.get(cur)!; if (!ks.length) break; const nd = byId.get(cur)!; const nxt = nd.player === "Nature" ? null : ks.find((k) => byId.get(k)!.spne); if (!nxt) { path.push(`Nature moves`); break; } path.push(`${nd.player} plays ${byId.get(nxt)!.edge}`); cur = nxt; }
+    facts.backward_induction = { equilibrium_path: path, payoffs_at_root: Object.fromEntries(players.map((p, k) => [p, root[k]])), note: "highlighted on the board; ties are broken toward the earlier-listed move" };
+  } else facts.backward_induction = "not computed (information sets, symbolic payoffs): explain the equilibrium in words";
+  const spec: TreeSpec = { kind: "tree", players, nodes };
+  if (i.title) spec.title = clean(i.title, 80);
+  return { spec, facts };
+}
