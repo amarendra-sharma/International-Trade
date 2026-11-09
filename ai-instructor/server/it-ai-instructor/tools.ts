@@ -16,7 +16,7 @@ import { wrapMaterial } from "./prompt.ts";
 import { assessCoverage, selectPassages } from "./content.ts";
 import type { ContentRepo, CourseSettings, ReviewKind, ReviewReason, Store } from "./store.ts";
 import * as E from "./econ.ts";
-import { consumerChoice, equationSpec, figureSpec, graphSpec, matrixSpec, treeSpec, missedSpec, reviewPage, reviewRows, scanSpec, type VisualSpec } from "./visuals.ts";
+import { consumerChoice, equationSpec, figureSpec, graphSpec, matrixSpec, treeSpec, simplexSpec, missedSpec, reviewPage, reviewRows, scanSpec, type VisualSpec } from "./visuals.ts";
 import { figureIndex } from "./figures.ts";
 import { hasFigures } from "./config.ts";
 import { masteryEstimate } from "./teaching.ts";
@@ -139,18 +139,19 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "show_graph",
-    description: "Draw a graph on the student's whiteboard. For ACCURACY give each curve as a FORMULA and the server computes it exactly: either y as a function of x (expr in terms of x, with from and to), or a parametric curve (x_expr and y_expr in terms of a parameter, with param, from and to; this is the right way to draw an offer curve from p). Formulas may use + - * / ^, parentheses, sqrt, ln, exp, abs, min, max, pi. Use points ([[x,y],...], AT MOST 12 per curve, one decimal, never more) only when no formula exists. Keep the whole call short. Up to 4 curves and 6 labelled markers; mark equilibria and key points: to mark where two curves cross, give intersect: [curve number, curve number] (1-based, in the order of series) and the server finds the exact crossing; otherwise give x and y from calc. Give every curve and marker a short `note` (a clause the board shows while that step is being drawn). Draw the curves in the order you will explain them. Say a short sentence aloud BEFORE calling this, then narrate the steps afterwards.",
+    description: "Draw a graph on the student's whiteboard. To SHADE an area (a feasible set, a bargaining set, a payoff region) give regions: each a polygon of [x, y] corner points; with regions, series may be empty or just the boundary lines (for example a Pareto frontier). For ACCURACY give each curve as a FORMULA and the server computes it exactly: either y as a function of x (expr in terms of x, with from and to), or a parametric curve (x_expr and y_expr in terms of a parameter, with param, from and to; this is the right way to draw an offer curve from p). Formulas may use + - * / ^, parentheses, sqrt, ln, exp, abs, min, max, pi. Use points ([[x,y],...], AT MOST 12 per curve, one decimal, never more) only when no formula exists. Keep the whole call short. Up to 4 curves and 6 labelled markers; mark equilibria and key points: to mark where two curves cross, give intersect: [curve number, curve number] (1-based, in the order of series) and the server finds the exact crossing; otherwise give x and y from calc. Give every curve and marker a short `note` (a clause the board shows while that step is being drawn). Draw the curves in the order you will explain them. Say a short sentence aloud BEFORE calling this, then narrate the steps afterwards.",
     input: {
       type: "object", additionalProperties: false, required: ["x_label", "y_label", "series"],
       properties: {
         title: text(80), x_label: text(40), y_label: text(40), x_max: num, y_max: num,
-        series: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label"], properties: { label: text(40), points: pointList, expr: text(200), x_expr: text(200), y_expr: text(200), param: text(8), from: num, to: num, dashed: { type: "boolean" }, note: text(110) } } },
+        series: { type: "array", minItems: 0, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label"], properties: { label: text(40), points: pointList, expr: text(200), x_expr: text(200), y_expr: text(200), param: text(8), from: num, to: num, dashed: { type: "boolean" }, note: text(110) } } },
+        regions: { type: "array", maxItems: 4, items: { type: "object", additionalProperties: false, required: ["label", "points"], properties: { label: text(40), note: text(110), points: { type: "array", minItems: 3, maxItems: 14, items: { type: "array", minItems: 2, maxItems: 2, items: num } } } } },
         markers: { type: "array", maxItems: 12, items: { type: "object", additionalProperties: false, required: ["label"], properties: { x: num, y: num, label: text(30), note: text(110), intersect: { type: "array", minItems: 2, maxItems: 2, items: { type: "integer", minimum: 1, maximum: 8 } } } } },
       },
     },
     async run(i, c) {
       try { const v = graphSpec(i); c.emitVisual?.(v);
-        const steps = ["the axes (" + v.x_label + " and " + v.y_label + ")", ...v.series.map((x) => "the curve '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...(v.markers ?? []).map((m) => "the point '" + m.label + "'" + (m.note ? " (" + m.note + ")" : ""))];
+        const steps = ["the axes (" + v.x_label + " and " + v.y_label + ")", ...(v.regions ?? []).map((x) => "the shaded region '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...v.series.map((x) => "the curve '" + x.label + "'" + (x.note ? " (" + x.note + ")" : "")), ...(v.markers ?? []).map((m) => "the point '" + m.label + "'" + (m.note ? " (" + m.note + ")" : ""))];
         return { shown: true, curves: v.series.length, whiteboard: "The whiteboard reveals ONE step each time you start a new sentence, and highlights it while you talk. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in exactly that order, one or two short sentences per step (first sentence = the axes), then say what it means and what to notice." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
@@ -195,6 +196,22 @@ export const TOOLS: ToolDef[] = [
     async run(i, c) {
       try { const { spec, facts } = treeSpec(i); c.emitVisual?.(spec);
         return { shown: true, ...facts, whiteboard: "The board reveals ONE step each time you start a new sentence: the root and its moves, then each level down to the payoffs, then any information sets, then the backward-induction path. Explain them in that order, one short sentence each, using the facts above, then say what it means." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
+    },
+  },
+  {
+    name: "show_simplex",
+    description: "Draw a STRATEGY TRIANGLE (simplex) on the student's whiteboard: every point inside is a mix of three things. Use it for the rock-paper-scissors population triangle and replicator dynamics, mixed strategies over three actions, and the allocation of a total among three players (cooperative games: the core, the Shapley value, the imputation set). corners = three labels (top, bottom-left, bottom-right). Give points (label and p = [a, b, c] shares, any non-negative numbers, normalised for you), regions (polygons of [a,b,c] corners, for example the core), paths (lists of [a,b,c] points). For population dynamics give flow = { payoffs: 3x3 matrix as short numeric strings, payoffs[i][j] = payoff to strategy i against j, starts: up to 5 starting mixes }: the SERVER integrates the replicator dynamics and draws the paths with arrows, so describe what the picture shows (spiral in, spiral out, cycle), not numbers you made up.",
+    input: { type: "object", additionalProperties: false, required: ["corners"], properties: {
+      title: text(80), corners: { type: "array", minItems: 3, maxItems: 3, items: text(24) },
+      points: { type: "array", maxItems: 8, items: { type: "object", additionalProperties: false, required: ["label", "p"], properties: { label: text(30), note: text(110), p: { type: "array", minItems: 3, maxItems: 3, items: { type: "number", minimum: 0, maximum: 1e6 } } } } },
+      regions: { type: "array", maxItems: 4, items: { type: "object", additionalProperties: false, required: ["label", "pts"], properties: { label: text(30), note: text(110), pts: { type: "array", minItems: 3, maxItems: 12, items: { type: "array", minItems: 3, maxItems: 3, items: { type: "number", minimum: 0, maximum: 1e6 } } } } } },
+      paths: { type: "array", maxItems: 5, items: { type: "object", additionalProperties: false, required: ["label", "pts"], properties: { label: text(30), note: text(110), dashed: { type: "boolean" }, pts: { type: "array", minItems: 2, maxItems: 120, items: { type: "array", minItems: 3, maxItems: 3, items: { type: "number", minimum: 0, maximum: 1e6 } } } } } },
+      flow: { type: "object", additionalProperties: false, required: ["payoffs", "starts"], properties: { label: text(30), payoffs: { type: "array", minItems: 3, maxItems: 3, items: { type: "array", minItems: 3, maxItems: 3, items: text(12) } }, starts: { type: "array", minItems: 1, maxItems: 5, items: { type: "array", minItems: 3, maxItems: 3, items: { type: "number", minimum: 0, maximum: 1e6 } } } } },
+    } },
+    async run(i, c) {
+      try { const { spec, facts } = simplexSpec(i); c.emitVisual?.(spec);
+        const steps = ["the triangle and its corners", ...spec.regions.map((x) => "the region '" + x.label + "'"), ...spec.paths.map((x) => "the path '" + x.label + "'"), ...spec.points.map((x) => "the point '" + x.label + "'")];
+        return { shown: true, ...facts, whiteboard: "The board reveals ONE step each time you start a new sentence. Steps in order: " + steps.map((x, n) => (n + 1) + ") " + x).join("; ") + ". Explain them in that order, one short sentence each, then say what it means." }; } catch (e) { if (e instanceof E.CalcError) return { shown: false, error: e.message }; throw e; }
     },
   },
   {

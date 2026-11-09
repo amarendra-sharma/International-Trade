@@ -7,6 +7,7 @@ import { lookupFigure } from "./figures.ts";
 export interface GraphSpec {
   kind: "graph"; title?: string; x_label: string; y_label: string; x_max?: number; y_max?: number;
   series: { label: string; points: [number, number][]; dashed?: boolean; note?: string }[];
+  regions?: { label: string; points: [number, number][]; note?: string }[];
   markers: { x: number; y: number; label: string; note?: string }[];
 }
 export interface EquationSpec { kind: "equation"; tex: string; caption?: string }
@@ -18,7 +19,7 @@ export interface ScanSpec { kind: "scan"; title: string; score: number | null; m
 export interface MissedItem { q: string; figure?: string; prompt?: string; options?: string[]; your: string; correct?: string; explanation?: string; earned?: number; points?: number }
 export interface MissedSpec {
   index?: number; count?: number; kind: "missed"; title: string; score: number | null; max_score: number | null; total_questions: number; items: MissedItem[] }
-export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec | MissedSpec | MatrixSpec | TreeSpec;
+export type VisualSpec = GraphSpec | EquationSpec | FigureSpec | ScanSpec | MissedSpec | MatrixSpec | TreeSpec | SimplexSpec;
 
 const clean = (s: unknown, n: number) => String(s ?? "").replace(/[\u0000-\u001f<>&"'`]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 const LIM = 1e6;
@@ -28,6 +29,7 @@ export interface GraphInput {
   title?: string; x_label: string; y_label: string; x_max?: number; y_max?: number;
   series: { label: string; points?: number[][]; expr?: string; x_expr?: string; y_expr?: string; param?: string; from?: number; to?: number; dashed?: boolean; note?: string }[];
   markers?: { x?: number; y?: number; label: string; note?: string; intersect?: number[] }[];
+  regions?: { label: string; points: number[][]; note?: string }[];
 }
 const SAMPLES = 60;
 /** First crossing of two curves (as drawn), ignoring the trivial crossing at the origin that offer curves share. */
@@ -62,7 +64,7 @@ function sampleCurve(s: GraphInput["series"][number], k: number): [number, numbe
   return out;
 }
 export function graphSpec(i: GraphInput): GraphSpec {
-  if (!i.series.length) throw new CalcError("1 or more curves");
+  if (!i.series.length && !(i.regions ?? []).length) throw new CalcError("1 or more curves, or a shaded region");
   // Oversized input is thinned rather than rejected, so a long point list still draws.
   const thin = <T,>(a: T[], n: number): T[] => { if (a.length <= n) return a; const out: T[] = []; for (let q = 0; q < n; q++) out.push(a[Math.round(q * (a.length - 1) / (n - 1))]); return out; };
   const series = i.series.slice(0, 6).map((s, k) => {
@@ -90,6 +92,13 @@ export function graphSpec(i: GraphInput): GraphSpec {
     const o: GraphSpec["markers"][number] = { x: num(x, "marker x"), y: num(y, "marker y"), label: clean(m.label, 30) }; if (m.note) o.note = clean(m.note, 110); return o;
   });
   const spec: GraphSpec = { kind: "graph", x_label: clean(i.x_label, 40), y_label: clean(i.y_label, 40), series, markers };
+  // shaded regions (feasible sets, bargaining sets, payoff regions): polygons of [x, y] corner points
+  const regions = (i.regions ?? []).slice(0, 4).map((r, k) => {
+    if (!r.points || r.points.length < 3 || r.points.length > 14) throw new CalcError(`region ${k + 1} needs 3 to 14 corner points [x, y]`);
+    const o: NonNullable<GraphSpec["regions"]>[number] = { label: clean(r.label, 40), points: r.points.map((p, j) => { if (p.length !== 2) throw new CalcError(`corner ${j + 1} of region ${k + 1} must be [x, y]`); return [num(p[0], "x"), num(p[1], "y")] as [number, number]; }) };
+    if (r.note) o.note = clean(r.note, 110); return o;
+  });
+  if (regions.length) spec.regions = regions;
   if (i.title) spec.title = clean(i.title, 80);
   if (i.x_max !== undefined) spec.x_max = num(i.x_max, "x_max");
   if (i.y_max !== undefined) spec.y_max = num(i.y_max, "y_max");
@@ -318,5 +327,48 @@ export function treeSpec(i: TreeInput): { spec: TreeSpec; facts: Record<string, 
   } else facts.backward_induction = "not computed (information sets, symbolic payoffs): explain the equilibrium in words";
   const spec: TreeSpec = { kind: "tree", players, nodes };
   if (i.title) spec.title = clean(i.title, 80);
+  return { spec, facts };
+}
+
+// ---- simplex (three-strategy triangle): population mixes, rock-paper-scissors flow, allocations among three players -----------------------
+export interface SimplexSpec { kind: "simplex"; title?: string; corners: [string, string, string];
+  points: { label: string; p: [number, number, number]; note?: string }[];
+  paths: { label: string; pts: [number, number, number][]; dashed?: boolean; note?: string }[];
+  regions: { label: string; pts: [number, number, number][]; note?: string }[] }
+export interface SimplexInput { title?: string; corners: string[];
+  points?: { label: string; p: number[]; note?: string }[];
+  regions?: { label: string; pts: number[][]; note?: string }[];
+  paths?: { label: string; pts: number[][]; dashed?: boolean; note?: string }[];
+  flow?: { payoffs: string[][]; starts: number[][]; label?: string } }
+const bary = (p: number[], what: string): [number, number, number] => {
+  if (p.length !== 3 || p.some((v) => !Number.isFinite(v) || v < -1e-9)) throw new CalcError(`${what}: needs three non-negative shares [a, b, c]`);
+  const s = p[0] + p[1] + p[2]; if (!(s > 0)) throw new CalcError(`${what}: shares must not all be zero`);
+  return [r3(p[0] / s), r3(p[1] / s), r3(p[2] / s)];
+};
+export function simplexSpec(i: SimplexInput): { spec: SimplexSpec; facts: Record<string, unknown> } {
+  if (i.corners.length !== 3) throw new CalcError("corners: exactly three labels (top, bottom-left, bottom-right)");
+  const spec: SimplexSpec = { kind: "simplex", corners: [clean(i.corners[0], 24), clean(i.corners[1], 24), clean(i.corners[2], 24)], points: [], paths: [], regions: [] };
+  if (i.title) spec.title = clean(i.title, 80);
+  const facts: Record<string, unknown> = {};
+  for (const r of (i.regions ?? []).slice(0, 4)) { if (r.pts.length < 3 || r.pts.length > 12) throw new CalcError(`region "${clean(r.label, 20)}" needs 3 to 12 corner points`); spec.regions.push({ label: clean(r.label, 30), pts: r.pts.map((p, k) => bary(p, `region point ${k + 1}`)), ...(r.note ? { note: clean(r.note, 110) } : {}) }); }
+  for (const r of (i.paths ?? []).slice(0, 5)) { if (r.pts.length < 2 || r.pts.length > 120) throw new CalcError(`path "${clean(r.label, 20)}" needs 2 to 120 points`); spec.paths.push({ label: clean(r.label, 30), pts: r.pts.map((p, k) => bary(p, `path point ${k + 1}`)), dashed: !!r.dashed, ...(r.note ? { note: clean(r.note, 110) } : {}) }); }
+  if (i.flow) {
+    const A = i.flow.payoffs.map((row) => row.map((s) => { const v = Number(String(s).trim()); if (!Number.isFinite(v)) throw new CalcError("flow payoffs must be numbers"); return v; }));
+    if (A.length !== 3 || A.some((r) => r.length !== 3)) throw new CalcError("flow.payoffs must be a 3x3 matrix: payoffs[i][j] = payoff to strategy i against strategy j");
+    for (const st of i.flow.starts.slice(0, 5)) {
+      let x = bary(st, "flow start") as number[]; const pts: [number, number, number][] = [[x[0], x[1], x[2]]];
+      const f = (y: number[]) => { const u = [0, 1, 2].map((a) => A[a][0] * y[0] + A[a][1] * y[1] + A[a][2] * y[2]); const avg = y[0] * u[0] + y[1] * u[1] + y[2] * u[2]; return y.map((v, a) => v * (u[a] - avg)); };
+      for (let s = 0; s < 400; s++) {
+        const h = 0.04, k1 = f(x), k2 = f(x.map((v, a) => v + h / 2 * k1[a])), k3 = f(x.map((v, a) => v + h / 2 * k2[a])), k4 = f(x.map((v, a) => v + h * k3[a]));
+        x = x.map((v, a) => Math.max(0, v + h / 6 * (k1[a] + 2 * k2[a] + 2 * k3[a] + k4[a]))); const t = x[0] + x[1] + x[2]; x = x.map((v) => v / t);
+        if (s % 5 === 4) pts.push([r3(x[0]), r3(x[1]), r3(x[2])]);
+      }
+      spec.paths.push({ label: clean(i.flow.label ?? "Population path", 30), pts, note: "replicator dynamics computed by the server" });
+    }
+    const end = spec.paths[spec.paths.length - 1].pts.slice(-1)[0];
+    facts.flow = `replicator dynamics from ${i.flow.starts.length} starting mix(es); the last path ends at (${end.join(", ")}) after the simulated time. Describe whether paths spiral in, spiral out or cycle from what the picture shows.`;
+  }
+  for (const p of (i.points ?? []).slice(0, 8)) spec.points.push({ label: clean(p.label, 30), p: bary(p.p, `point "${clean(p.label, 20)}"`), ...(p.note ? { note: clean(p.note, 110) } : {}) });
+  if (!spec.points.length && !spec.paths.length && !spec.regions.length) throw new CalcError("draw something inside the triangle: points, regions, paths or a flow");
   return { spec, facts };
 }

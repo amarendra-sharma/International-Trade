@@ -123,3 +123,45 @@ export function treeSvg(spec, o) {
   out.push('<text x="' + W / 2 + '" y="' + (H - 10) + '" text-anchor="middle" font-size="12" fill-opacity=".8">Payoffs listed top to bottom: ' + spec.players.map(function (p) { return esc(p); }).join(', ') + '</text></svg>');
   return { svg: out.join(''), steps: step };
 }
+
+/** Simplex (three-strategy triangle): corners are the pure strategies; every point inside is a mix. spec: { kind:'simplex', title?, corners[3], points[{label,p[3],note?}], paths[{label,pts[[3]],dashed?,note?}], regions[{label,pts[[3]],note?}] } */
+export function simplexSvg(spec, o) {
+  o = o || {}; var st = o.board ? BOARD : CHAT;
+  if (!spec || spec.kind !== 'simplex' || !Array.isArray(spec.corners) || spec.corners.length !== 3) return null;
+  var points = Array.isArray(spec.points) ? spec.points.slice(0, 8) : [], paths = Array.isArray(spec.paths) ? spec.paths.slice(0, 5) : [], regions = Array.isArray(spec.regions) ? spec.regions.slice(0, 4) : [];
+  var okP = function (p) { return Array.isArray(p) && p.length === 3 && p.every(function (v) { return fin(v) && v >= -1e-6 && v <= 1 + 1e-6; }); };
+  if (points.some(function (q) { return !q || !okP(q.p); }) || paths.some(function (q) { return !q || !Array.isArray(q.pts) || q.pts.length < 2 || q.pts.length > 130 || !q.pts.every(okP); }) || regions.some(function (q) { return !q || !Array.isArray(q.pts) || q.pts.length < 3 || q.pts.length > 12 || !q.pts.every(okP); })) return null;
+  if (!points.length && !paths.length && !regions.length) return null;
+  var W = 540, H = 480, TY = spec.title ? 78 : 58, BY = H - 62, TXc = W / 2, half = (BY - TY) / Math.sqrt(3);
+  var V = [[TXc, TY], [TXc - half, BY], [TXc + half, BY]];
+  var pos = function (p) { return [p[0] * V[0][0] + p[1] * V[1][0] + p[2] * V[2][0], p[0] * V[0][1] + p[1] * V[1][1] + p[2] * V[2][1]]; };
+  var ink = st.ink, out = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(spec.title || 'Strategy simplex') + '" font-family="system-ui,sans-serif" font-size="14" fill="' + ink + '" style="max-width:100%;height:auto">'];
+  var step = 0, k, g = [];
+  if (spec.title) g.push('<text x="' + W / 2 + '" y="24" text-anchor="middle" font-size="16" font-weight="600">' + esc(spec.title) + '</text>');
+  [0.25, 0.5, 0.75].forEach(function (t) {
+    [[0, 1, 2], [1, 2, 0], [2, 0, 1]].forEach(function (ax) {
+      var a = [0, 0, 0], b = [0, 0, 0]; a[ax[0]] = t; a[ax[1]] = 1 - t; b[ax[0]] = t; b[ax[2]] = 1 - t;
+      var A = pos(a), B = pos(b); g.push('<line x1="' + A[0].toFixed(1) + '" y1="' + A[1].toFixed(1) + '" x2="' + B[0].toFixed(1) + '" y2="' + B[1].toFixed(1) + '" stroke="' + ink + '" stroke-opacity=".14"/>');
+    });
+  });
+  g.push('<polygon points="' + V.map(function (v) { return v[0].toFixed(1) + ',' + v[1].toFixed(1); }).join(' ') + '" fill="none" stroke="' + ink + '" stroke-width="2.4"/>');
+  g.push('<text x="' + V[0][0] + '" y="' + (V[0][1] - 12) + '" text-anchor="middle" font-weight="700">' + esc(spec.corners[0]) + '</text>');
+  g.push('<text x="' + (V[1][0] - 6) + '" y="' + (V[1][1] + 22) + '" text-anchor="middle" font-weight="700">' + esc(spec.corners[1]) + '</text>');
+  g.push('<text x="' + (V[2][0] + 6) + '" y="' + (V[2][1] + 22) + '" text-anchor="middle" font-weight="700">' + esc(spec.corners[2]) + '</text>');
+  out.push(group(o, st, step++, '<b>The triangle.</b> Each corner is a pure strategy (' + spec.corners.map(esc).join(', ') + '); the closer a point is to a corner, the larger that share. The grid lines mark quarters.', g.join('')));
+  regions.forEach(function (r, n) {
+    var P = r.pts.map(pos), c = st.pl[n % st.pl.length], cx = P.reduce(function (s, p) { return s + p[0]; }, 0) / P.length, cy = P.reduce(function (s, p) { return s + p[1]; }, 0) / P.length;
+    out.push(group(o, st, step++, '<b>' + esc(r.label) + '.</b> ' + esc(r.note || ''), '<polygon points="' + P.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + '" fill="' + c + '" fill-opacity=".25" stroke="' + c + '" stroke-width="2.4"/><text x="' + cx.toFixed(1) + '" y="' + cy.toFixed(1) + '" text-anchor="middle" font-weight="700" fill="' + c + '" paint-order="stroke" stroke="' + st.halo + '" stroke-width="3">' + esc(r.label) + '</text>'));
+  });
+  paths.forEach(function (r, n) {
+    var P = r.pts.map(pos), c = st.pl[(n + regions.length) % st.pl.length], d = P.map(function (p, j) { return (j ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' '), e = P[P.length - 1], f = P[Math.max(0, P.length - 3)];
+    var ang = Math.atan2(e[1] - f[1], e[0] - f[0]), ah = [[e[0], e[1]], [e[0] - 11 * Math.cos(ang - 0.45), e[1] - 11 * Math.sin(ang - 0.45)], [e[0] - 11 * Math.cos(ang + 0.45), e[1] - 11 * Math.sin(ang + 0.45)]];
+    out.push(group(o, st, step++, '<b>' + esc(r.label) + '.</b> ' + esc(r.note || ''), '<path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"' + (r.dashed ? ' stroke-dasharray="8 6"' : '') + '/><polygon points="' + ah.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + '" fill="' + c + '"/><circle cx="' + P[0][0].toFixed(1) + '" cy="' + P[0][1].toFixed(1) + '" r="4" fill="' + c + '"/>'));
+  });
+  points.forEach(function (q) {
+    var P = pos(q.p);
+    out.push(group(o, st, step++, '<b>' + esc(q.label) + '.</b> ' + esc(q.note || ''), '<circle cx="' + P[0].toFixed(1) + '" cy="' + P[1].toFixed(1) + '" r="6" fill="' + st.hi + '" stroke="' + ink + '" stroke-width="1.5"/><text x="' + (P[0] + 10).toFixed(1) + '" y="' + (P[1] - 8).toFixed(1) + '" font-weight="700" paint-order="stroke" stroke="' + st.halo + '" stroke-width="3">' + esc(q.label) + '</text>'));
+  });
+  out.push('</svg>');
+  return { svg: out.join(''), steps: step };
+}
