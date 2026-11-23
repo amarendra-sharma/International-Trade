@@ -388,7 +388,7 @@ var MNProctor = (function () {
     var rec={ exam_id:S.exam.id, course_id:S.exam.course_id, student_id:S.user?S.user.id:null,
               violations:S.violations, events:JSON.stringify(S.events.slice(0,50)) };
     if(!rec.student_id){ return Promise.resolve(); }
-    return SB.from(TABLE).upsert(rec, { onConflict:'exam_id,student_id' }).then(function(r){
+    return SB.from(S.exam.table || TABLE).upsert(rec, { onConflict:'exam_id,student_id' }).then(function(r){
       if(r && r.error){ try{ console.error('mnproctor persist failed:', r.error.message); }catch(e){} S.lastError=r.error.message; }
       return r;
     }, function(e){ try{ console.error('mnproctor persist exception:', e); }catch(x){} S.lastError=(e&&e.message)?e.message:'unknown'; });
@@ -402,9 +402,10 @@ var MNProctor = (function () {
 
   // -- instructor integrity viewer ------------------------------------------
   // hostEl: element to render into. Reads events + signed snapshot URLs.
-  function renderIntegrityLog(examId, hostEl){
+  // table (optional): read from a different events table (e.g. self-study quiz records).
+  function renderIntegrityLog(examId, hostEl, table){
     hostEl.innerHTML='<div style="opacity:.7;font-size:13px;">Loading integrity log\u2026</div>';
-    SB.from(TABLE).select('student_id,violations,events,updated_at').eq('exam_id',examId).order('violations',{ascending:false}).then(function(res){
+    SB.from(table || TABLE).select('student_id,violations,events,updated_at').eq('exam_id',examId).order('violations',{ascending:false}).then(function(res){
       if(res.error){ hostEl.innerHTML='<div style="opacity:.7;">'+esc(res.error.message)+'</div>'; return; }
       var rows=res.data?res.data:[];
       if(rows.length===0){ hostEl.innerHTML='<div style="opacity:.7;font-size:13px;">No proctoring events recorded yet.</div>'; return; }
