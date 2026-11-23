@@ -18,7 +18,9 @@
        quizExamId: function(ch, cid){ ... },          // integrity-record id of a self-study chapter quiz
        compute: function(courseId, uid){ ... },       // optional -> Promise {comps,total}, same as the student's My progress
        threshold: 0.70,
-       openCourse: function(courseId){ ... }          // admin "Open"
+       openCourse: function(courseId){ ... },         // admin "Open"
+       payRef: function(uid, cid){ ... },             // optional: Stripe client_reference_id (default uid + '__' + cid)
+       arenaWord: 'labs'                              // optional: what the course calls its arenas
      });
    and then: mountHome(el), mountAdmin(el), bodyLink(m, style)/wireBodies(el), quizGate(...), quizDone(),
    prefetch(cid), isSelfStudyCached(cid), handleSignupParam(fn). */
@@ -83,8 +85,11 @@
     var s = S(), base = s.settings ? s.settings.stripe_link : '';
     if (!base || !s.user || !st.course_id) { return ''; }
     var sep = base.indexOf('?') >= 0 ? '&' : '?';
-    return base + sep + 'client_reference_id=' + encodeURIComponent(s.user.id + '__' + st.course_id) + '&prefilled_email=' + encodeURIComponent(s.user.email || '');
+    var ref = C.payRef ? C.payRef(s.user.id, st.course_id) : (s.user.id + '__' + st.course_id);
+    return base + sep + 'client_reference_id=' + encodeURIComponent(ref) + '&prefilled_email=' + encodeURIComponent(s.user.email || '');
   }
+  function aw() { return C.arenaWord || 'arenas'; }
+  function AW() { var w = aw(); return w.charAt(0).toUpperCase() + w.slice(1); }
   function tables() { var t = C.proctorTable; return Array.isArray(t) ? t : [t]; }
   function refresh() { try { return Promise.resolve(C.refresh ? C.refresh() : null); } catch (e) { return Promise.resolve(); } }
 
@@ -107,7 +112,7 @@
     if (st.status === 'none') {
       if (!st.enabled || s.payCourseId) { host.innerHTML = ''; return; }   // already in a professor's course
       host.innerHTML = head + '<div class="c-eyebrow">Self-study</div><h3 style="margin:4px 0 8px;">Take the whole course with Asha, your AI professor</h3>' +
-        '<p style="color:var(--text-muted);font-size:14px;margin:0 0 12px;">You choose how many weeks the course lasts and when your live classes meet. Asha then teaches every chapter in live classes on your schedule, sets your quiz and arena deadlines, runs the midterm and final, grades your work, and answers questions at any hour. All ' + C.chapters + ' chapters and ' + C.arenas + ' arenas are included, with proctored quizzes and exams and a MacroNations certificate when you finish' + (price ? ', for ' + esc(price) : '') + '.</p>' +
+        '<p style="color:var(--text-muted);font-size:14px;margin:0 0 12px;">You choose how many weeks the course lasts and when your live classes meet. Asha then teaches every chapter in live classes on your schedule, sets your quiz and arena deadlines, runs the midterm and final, grades your work, and answers questions at any hour. All ' + C.chapters + ' chapters and ' + C.arenas + ' ' + aw() + ' are included, with proctored quizzes and exams and a MacroNations certificate when you finish' + (price ? ', for ' + esc(price) : '') + '.</p>' +
         '<button class="btn btn-primary" id="ssStart">Start self-study</button> <a class="btn btn-ghost" href="self-study.html" target="_blank" rel="noopener">See everything included</a> <span id="ssMsg" class="msg" style="display:inline-block;margin-left:8px;"></span></div>';
       $('ssStart').addEventListener('click', function () {
         $('ssStart').disabled = true;
@@ -147,7 +152,7 @@
         (st.midterm ? '<div><b>Midterm:</b> ' + esc(fmt(st.midterm.opens, st.tz)) + ' – ' + esc(fmt(st.midterm.closes, st.tz)) + '</div>' : '') +
         (st.final ? '<div><b>Final:</b> ' + esc(fmt(st.final.opens, st.tz)) + ' – ' + esc(fmt(st.final.closes, st.tz)) + '</div>' : '') +
         '<div><b>Course ends:</b> ' + esc(fmtDate(st.ends_at, st.tz)) + '</div><div style="font-size:12px;color:var(--text-subtle);">Times are shown in ' + esc(st.tz) + '.</div></div>' +
-        '<p style="color:var(--text-muted);font-size:13px;margin:10px 0 0;">Open the AI Instructor at class time to join Asha’s live class. Read each chapter before its class; quizzes and arenas are due three days after the chapter is finished.</p>' +
+        '<p style="color:var(--text-muted);font-size:13px;margin:10px 0 0;">Open the AI Instructor at class time to join Asha’s live class. Read each chapter before its class; quizzes and ' + aw() + ' are due three days after the chapter is finished.</p>' +
         (!st.started ? '<button class="btn btn-ghost btn-sm" id="ssEdit" style="margin-top:10px;">Change my schedule</button>' : '') + '</div>';
       if ($('ssEdit')) { $('ssEdit').addEventListener('click', function () { host.setAttribute('data-edit', '1'); card(host, st); }); }
       return;
@@ -328,7 +333,7 @@
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:10px;flex-wrap:wrap;">' +
       '<div style="font-size:12px;color:var(--text-muted);">Totals use the course weights with untaken exams counted as 0, exactly as the student sees them. The certificate needs ' + Math.round(thr * 100) + '%.</div>' +
       '<button class="btn btn-ghost btn-sm" id="ssCsv">Download CSV</button></div>' +
-      '<div style="overflow-x:auto;"><table class="tbl" style="width:100%;font-size:12.5px;"><tr><th align="left">Student</th><th align="left">Status</th><th>Classes</th><th>Reading</th><th>Quizzes</th><th>Arenas</th><th>Attend.</th><th>Midterm</th><th>Final</th><th>Total</th><th>Flags</th><th align="left">Ends</th><th></th></tr>' +
+      '<div style="overflow-x:auto;"><table class="tbl" style="width:100%;font-size:12.5px;"><tr><th align="left">Student</th><th align="left">Status</th><th>Classes</th><th>Reading</th><th>Quizzes</th><th>' + AW() + '</th><th>Attend.</th><th>Midterm</th><th>Final</th><th>Total</th><th>Flags</th><th align="left">Ends</th><th></th></tr>' +
       rows.map(function (x) {
         var live = x.status === 'active' || x.status === 'completed';
         var cell = function (k) { return '<td align="center" data-ssc="' + x.course_id + ':' + k + '">' + (live ? '<span style="color:var(--text-subtle);">…</span>' : '—') + '</td>'; };
@@ -388,7 +393,7 @@
       if ($('ssTCert')) { $('ssTCert').textContent = totals.filter(function (v) { return v >= thr; }).length + ' of ' + started.length; }
     });
     $('ssCsv').addEventListener('click', function () {
-      var head = ['Student', 'Email', 'Status', 'Paid by', 'Weeks', 'Starts', 'Ends', 'Classes held', 'Classes total', 'Reading %', 'Quizzes %', 'Arenas %', 'Attendance %', 'Midterm %', 'Final %', 'Total %', 'Certificate', 'Integrity flags'];
+      var head = ['Student', 'Email', 'Status', 'Paid by', 'Weeks', 'Starts', 'Ends', 'Classes held', 'Classes total', 'Reading %', 'Quizzes %', AW() + ' %', 'Attendance %', 'Midterm %', 'Final %', 'Total %', 'Certificate', 'Integrity flags'];
       var q = function (v) { v = (v === null || v === undefined) ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
       var p = function (v) { return (typeof v === 'number') ? Math.round(v * 1000) / 10 : ''; };
       var lines = [head.join(',')].concat(rows.map(function (x) {
